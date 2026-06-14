@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Papa from 'papaparse'
+import { downloadSampleCsv } from '@/lib/downloadCsv'
 
 type Class = { class_uid: string }
 type CurriculumEntry = { id: string; unit: string; learning_goal: string }
@@ -207,9 +208,22 @@ export default function QuestionsPage() {
       {/* Upload */}
       <section className="bg-white border border-gray-200 rounded-lg p-5">
         <h2 className="font-medium mb-1">Upload Questions (CSV)</h2>
-        <p className="text-xs text-gray-500 mb-1">
-          Columns: <span className="font-mono">question_uid, grade, subject, unit, learning_goal, question_text, option_1, option_1_tag, option_2, option_2_tag, option_3, option_3_tag, option_4, option_4_tag, correct_answer, level, hint, is_remedy</span>
-        </p>
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <p className="text-xs text-gray-500">
+            Columns: <span className="font-mono">question_uid, grade, subject, unit, learning_goal, question_text, option_1, option_1_tag, option_2, option_2_tag, option_3, option_3_tag, option_4, option_4_tag, correct_answer, level, hint, is_remedy</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => downloadSampleCsv(
+              'sample-questions.csv',
+              ['question_uid','grade','subject','unit','learning_goal','question_text','option_1','option_1_tag','option_2','option_2_tag','option_3','option_3_tag','option_4','option_4_tag','correct_answer','level','hint','is_remedy'],
+              ['G7Ch1S1Q1','7','Science','Chapter 1 Session 1: The Web of Science','Students will identify the steps of the scientific method','What is the first step of the scientific method?','Make an observation','G7C1.1','Form a hypothesis','G7C1.2','Conduct an experiment','','Draw a conclusion','','A','Theory','Science starts with noticing things around us','false']
+            )}
+            className="text-xs text-blue-600 hover:text-blue-800 underline underline-offset-2 whitespace-nowrap flex-shrink-0"
+          >
+            Download sample
+          </button>
+        </div>
         <form onSubmit={handleUpload} className="flex items-center gap-3 mt-3">
           <input ref={fileRef} type="file" accept=".csv" required />
           <button type="submit" className="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700">Upload</button>

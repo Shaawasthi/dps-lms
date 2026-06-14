@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Papa from 'papaparse'
+import { downloadSampleCsv } from '@/lib/downloadCsv'
 
 type GradeSubject = { grade: string; subject: string }
 type CurriculumEntry = {
@@ -235,7 +236,20 @@ export default function CurriculumPage() {
 
       {/* CSV upload */}
       <section className="bg-white border border-gray-200 rounded-lg p-5">
-        <h2 className="font-medium mb-1">Bulk Upload (CSV)</h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-medium">Bulk Upload (CSV)</h2>
+          <button
+            type="button"
+            onClick={() => downloadSampleCsv(
+              'sample-curriculum.csv',
+              ['grade','subject','unit','learning_goal','misconception_code','misconception_description'],
+              ['7','Science','Chapter 1 Session 1: The Web of Science','Students will identify the steps of the scientific method','G7C1.1','Students think experiments always require lab equipment']
+            )}
+            className="text-xs text-blue-600 hover:text-blue-800 underline underline-offset-2"
+          >
+            Download sample
+          </button>
+        </div>
         <p className="text-xs text-gray-500 mb-1">
           Columns: <span className="font-mono">grade, subject, unit, learning_goal, misconception_code, misconception_description</span>
         </p>

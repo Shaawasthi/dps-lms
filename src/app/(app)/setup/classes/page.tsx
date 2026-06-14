@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Papa from 'papaparse'
+import { downloadSampleCsv } from '@/lib/downloadCsv'
 
 type Class = {
   class_uid: string
@@ -185,7 +186,20 @@ export default function ClassesPage() {
 
       {/* Upload students */}
       <section className="bg-white border border-gray-200 rounded-lg p-5">
-        <h2 className="font-medium mb-1">Upload Students (CSV)</h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-medium">Upload Students (CSV)</h2>
+          <button
+            type="button"
+            onClick={() => downloadSampleCsv(
+              'sample-students.csv',
+              ['student_id','roll_number','section','name'],
+              ['STU001','1','A','Priya Sharma']
+            )}
+            className="text-xs text-blue-600 hover:text-blue-800 underline underline-offset-2"
+          >
+            Download sample
+          </button>
+        </div>
         <p className="text-xs text-gray-500 mb-4">Columns: student_id, roll_number, section, name</p>
         <form onSubmit={handleStudentUpload} className="space-y-3">
           <div>
