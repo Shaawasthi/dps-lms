@@ -3,7 +3,12 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'DPS LMS',
-  description: 'Learning Management System',
+  description: 'Delhi Public School Learning Management System',
+  icons: {
+    icon: '/dps-logo.png',
+    shortcut: '/dps-logo.png',
+    apple: '/dps-logo.png',
+  },
 }
 
 export default function RootLayout({
