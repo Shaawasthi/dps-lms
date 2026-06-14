@@ -1,0 +1,71 @@
+grade,subject,unit,learning_goal,misconception_code,misconception_description
+7,Science,The Ever Evolving World of Science,What is Science? A Way of Thinking,G7C1.1,Science is a collection of fixed facts
+7,Science,The Ever Evolving World of Science,What is Science? A Way of Thinking,G7C1.2,Science only happens in laboratories
+7,Science,The Ever Evolving World of Science,What is Science? A Way of Thinking,G7C1.3,Science and technology are identical
+7,Science,The Ever Evolving World of Science,What is Science? A Way of Thinking,G7C1.4,Observation means only seeing
+7,Science,The Ever Evolving World of Science,Curiosity to Discovery,G7C1.5,Everything related to science such as historical facts and handling apparatus counts as scientific curiosity
+7,Science,The Ever Evolving World of Science,The Web of Science: Everything is Connected,G7C1.6,Incorrect understanding of connection between different branches of science
+7,Science,The Ever Evolving World of Science,Everyday Phenomena: Thinking Like a Scientist,G7C1.7,All changes are permanent changes
+7,Science,The Ever Evolving World of Science,Everyday Phenomena: Thinking Like a Scientist,G7C1.11,Incorrect understanding of chemical change
+7,Science,The Ever Evolving World of Science,Science Time and Universe,G7C1.8,Day and night occur due to earth's revolution
+7,Science,The Ever Evolving World of Science,Science Time and Universe,G7C1.9,Day and night occur due to both earth's revolution and rotation
+7,Science,The Ever Evolving World of Science,Science Time and Universe,G7C1.10,Incorrect understanding of sundial functioning
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",What makes a substance acidic or basic,G7C2.1,"Tasting, touching or smelling chemicals is always safe"
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",What makes a substance acidic or basic,G7C2.3,Neutral substances are always safe to taste or consume
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",What makes a substance acidic or basic,G7C2.4,Bases are generally safer than acids
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Nature's clue: Indicators,G7C2.12,Indicators always change colour when mixed with acidic or basic substances
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Nature's clue: Indicators,G7C2.13,Incorrect understanding of usage of indicators
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Synthetic indicators,G7C2.7,Incorrect understanding of change of color for indicator - litmus
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Synthetic indicators,G7C2.8,Lime juice and lime water are the same
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Understanding neutralisation,G7C2.10,Neutral substances can be used for neutralisation
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Acids and bases in daily life,G7C2.6,Incorrect understanding of neutralization process
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Acids and bases in daily life,G7C2.11,Naturally occurring acids or bases are safe to taste
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Design your own kit,G7C2.2,"Small quantities of acids or bases are always safe to taste, feel or smell"
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Design your own kit,G7C2.5,Only natural indicators are safe; synthetic indicators are harmful
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Design your own kit,G7C2.9,Litmus paper changes colour with every liquid
+7,Science,"Exploring Substances: Acidic, Basic and Neutral",Performance task activity,,
+7,Science,Electricity: Circuits and their components,Introduction to Electricity and Its Role in Daily Life,,
+7,Science,Electricity: Circuits and their components,Understanding the Electric Cell and Battery,,
+7,Science,Electricity: Circuits and their components,Exploring Electric Lamps and LEDs,,
+7,Science,Electricity: Circuits and their components,Making a Simple Electric Circuit,,
+7,Science,Electricity: Circuits and their components,DIY Switch and Its Function,,
+7,Science,Electricity: Circuits and their components,Circuit Diagrams and Symbols,,
+7,Science,Electricity: Circuits and their components,Conductors and Insulators of Electricity,,
+7,Science,The World of Metals and Non-metals,Introduction to metals and non-metals,G7C4.1,Only metals or only non-metals are used in daily life
+7,Science,The World of Metals and Non-metals,Introduction to metals and non-metals,G7C4.2,All hard things are made of metal
+7,Science,The World of Metals and Non-metals,Introduction to metals and non-metals,G7C4.3,All metals are in solid state at room temperature
+7,Science,The World of Metals and Non-metals,Physical properties,G7C4.4,Incorrect understanding of properties of metal
+7,Science,The World of Metals and Non-metals,Physical properties,G7C4.5,Elasticity and ductility are the same property
+7,Science,The World of Metals and Non-metals,Chemical properties: Reaction with oxygen,G7C4.6,Oxidation happens only to metals
+7,Science,The World of Metals and Non-metals,Chemical properties: Reaction with oxygen,G7C4.7,Oxidation happens only to non-metals
+7,Science,The World of Metals and Non-metals,Chemical properties: Reaction with oxygen,G7C4.8,Oxidation is a physical change
+7,Science,The World of Metals and Non-metals,Chemical properties: Reaction with water and acids,G7C4.10,Incorrect understanding of metal reaction with acid and water
+7,Science,The World of Metals and Non-metals,Use of metals and non-metals,G7C4.9,Highly ductile means it can always be used in any practical scenario
+7,Science,The World of Metals and Non-metals,Displacement reactions: A Chemical Tug of War,,
+7,Science,Changes Around Us: Physical and Chemical,Introduction to change,G7C5.1,Incorrect understanding of examples of chemical change
+7,Science,Changes Around Us: Physical and Chemical,Introduction to change,G7C5.2,Incorrect understanding of examples of physical change
+7,Science,Changes Around Us: Physical and Chemical,Physical changes,G7C5.3,Physical change is the same as reversible change
+7,Science,Changes Around Us: Physical and Chemical,Physical changes,G7C5.5,All irreversible changes are chemical changes
+7,Science,Changes Around Us: Physical and Chemical,Physical changes,G7C5.6,New product may form in a physical change
+7,Science,Changes Around Us: Physical and Chemical,Chemical changes part 1,G7C5.12,Physical properties don't change in a chemical reaction
+7,Science,Changes Around Us: Physical and Chemical,Chemical changes part 2: Combustion and rusting,G7C5.10,Incorrect understanding of the rusting process
+7,Science,Changes Around Us: Physical and Chemical,Chemical changes part 2: Combustion and rusting,G7C5.11,Incorrect understanding of combustion
+7,Science,Changes Around Us: Physical and Chemical,Mixed changes,G7C5.9,Chemical change is the same as irreversible change
+7,Science,Changes Around Us: Physical and Chemical,Environmental impact: Weathering of rocks,G7C5.7,Weathering is harmful to the environment
+7,Science,Changes Around Us: Physical and Chemical,Environmental impact: Weathering of rocks,G7C5.8,Incorrect understanding of the definition of weathering and erosion
+7,Science,Changes Around Us: Physical and Chemical,Reflection and application,G7C5.4,Chemical change is always harmful
+7,Science,Heat Transfer in Nature,Introduction to Heat Transfer: Conduction,,
+7,Science,Heat Transfer in Nature,Good and Poor Conductors of Heat,,
+7,Science,Heat Transfer in Nature,Convection in Air,,
+7,Science,Heat Transfer in Nature,Convection in Water,,
+7,Science,Heat Transfer in Nature,Land and Sea Breeze,,
+7,Science,Heat Transfer in Nature,Radiation,,
+7,Science,Heat Transfer in Nature,The Water Cycle and Evaporation,,
+7,Science,Heat Transfer in Nature,Infiltration and Aquifers,,
+7,Science,Heat Transfer in Nature,Local Solutions and Sustainable Practices,,
+7,Science,Life Processes in Plants,How Do Plants Grow,,
+7,Science,Life Processes in Plants,How Do Plants Get Food for Their Growth?,,
+7,Science,Life Processes in Plants,Photosynthesis,,
+7,Science,Life Processes in Plants,Respiration and Transpiration in Plants,,
+7,Science,Life Processes in Plants,Transport in Plants: Xylem and Phloem,,
+7,Science,Life Processes in Plants,Comparing Life Processes: Plants vs. Animals,,
