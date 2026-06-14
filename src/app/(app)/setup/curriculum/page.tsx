@@ -164,7 +164,7 @@ export default function CurriculumPage() {
         if (ce) { setUploadStatus('Error upserting curriculum: ' + ce.message); return }
 
         // Fetch back to get IDs
-        const grades = [...new Set(curricEntries.map((c) => c.grade))]
+        const grades = Array.from(new Set(curricEntries.map((c) => c.grade)))
         const { data: fetchedEntries } = await supabase
           .from('curriculum')
           .select('id, grade, subject, unit, learning_goal')
