@@ -30,6 +30,12 @@ export default function CurriculumPage() {
   const [form, setForm] = useState({ gs: '', unit: '', learning_goal: '' })
   const [formError, setFormError] = useState('')
 
+  // Edit selected entry
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState({ unit: '', learning_goal: '' })
+  const [editError, setEditError] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+
   // Add misconception form
   const [mcForm, setMcForm] = useState({ code: '', description: '' })
   const [mcError, setMcError] = useState('')
@@ -107,6 +113,27 @@ export default function CurriculumPage() {
   async function handleDeleteEntry(id: string) {
     await supabase.from('curriculum').delete().eq('id', id)
     if (selectedEntry?.id === id) setSelectedEntry(null)
+    fetchEntries()
+  }
+
+  function startEditing(entry: CurriculumEntry) {
+    setEditForm({ unit: entry.unit, learning_goal: entry.learning_goal })
+    setEditError('')
+    setEditing(true)
+  }
+
+  async function handleSaveEntry(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedEntry) return
+    setEditSaving(true)
+    setEditError('')
+    const { error } = await supabase.from('curriculum').update({
+      unit: editForm.unit,
+      learning_goal: editForm.learning_goal,
+    }).eq('id', selectedEntry.id)
+    setEditSaving(false)
+    if (error) { setEditError(error.message); return }
+    setEditing(false)
     fetchEntries()
   }
 
@@ -331,8 +358,51 @@ export default function CurriculumPage() {
           ) : (
             <>
               <div className="px-4 py-3 border-b border-gray-200">
-                <p className="text-xs text-gray-400">{selectedEntry.unit}</p>
-                <p className="text-sm font-medium text-gray-800">{selectedEntry.learning_goal}</p>
+                {editing ? (
+                  <form onSubmit={handleSaveEntry} className="space-y-2">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Unit</label>
+                      <input
+                        value={editForm.unit}
+                        onChange={(e) => setEditForm((f) => ({ ...f, unit: e.target.value }))}
+                        required
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Learning Goal</label>
+                      <textarea
+                        value={editForm.learning_goal}
+                        onChange={(e) => setEditForm((f) => ({ ...f, learning_goal: e.target.value }))}
+                        required
+                        rows={2}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm resize-y"
+                      />
+                    </div>
+                    {editError && <p className="text-xs text-red-600">{editError}</p>}
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={editSaving}
+                        className="text-xs bg-blue-600 text-white rounded px-3 py-1.5 font-medium hover:bg-blue-700 disabled:opacity-50">
+                        {editSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => setEditing(false)}
+                        className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs text-gray-400">{selectedEntry.unit}</p>
+                      <p className="text-sm font-medium text-gray-800">{selectedEntry.learning_goal}</p>
+                    </div>
+                    <button onClick={() => startEditing(selectedEntry)}
+                      className="text-xs text-blue-500 hover:text-blue-700 flex-shrink-0 mt-0.5">
+                      Edit
+                    </button>
+                  </div>
+                )}
               </div>
 
               <form onSubmit={handleAddMisconception} className="px-4 py-3 border-b border-gray-100 space-y-2">
