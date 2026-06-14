@@ -68,7 +68,7 @@ function dominantMisconception(
   if (tally.size === 0) return null
 
   // Return the most frequently demonstrated misconception
-  return [...tally.entries()].sort((a, b) => b[1] - a[1])[0][0]
+  return Array.from(tally.entries()).sort((a, b) => b[1] - a[1])[0][0]
 }
 
 export async function POST(request: NextRequest) {
