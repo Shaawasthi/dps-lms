@@ -181,7 +181,7 @@ export default function ReportsPage() {
             <thead className="bg-gray-50 text-gray-500 text-left">
               <tr>
                 <th className="px-4 py-2 font-medium">Unit</th>
-                <th className="px-4 py-2 font-medium">Learning Goal</th>
+                <th className="px-4 py-2 font-medium">Session Name</th>
                 {LEVELS.map((l) => (
                   <th key={l} className="px-4 py-2 font-medium">
                     {l}
@@ -226,7 +226,7 @@ export default function ReportsPage() {
                     <th
                       key={`${c.id}-${l}`}
                       className="border border-gray-200 px-2 py-1 font-medium text-gray-500 max-w-[60px] whitespace-nowrap overflow-hidden"
-                      title={`${c.learning_goal} – ${l}`}
+                      title={`${c.learning_goal} · ${l}`}
                     >
                       {c.unit.slice(0, 8)}…{l[0]}
                     </th>

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Papa from 'papaparse'
 import { downloadSampleCsv } from '@/lib/downloadCsv'
+import { useRole } from '@/context/RoleContext'
 
 type Class = {
   class_uid: string
@@ -22,6 +23,8 @@ type Student = {
 
 export default function ClassesPage() {
   const supabase = createClient()
+  const role = useRole()
+  const isAdmin = role === 'admin'
   const [classes, setClasses] = useState<Class[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ grade: '', section: '', subject: '', academic_year: '' })
@@ -128,8 +131,8 @@ export default function ClassesPage() {
     <div className="max-w-3xl space-y-8">
       <h1 className="text-xl font-semibold">Classes &amp; Students</h1>
 
-      {/* Add class */}
-      <section className="bg-white border border-gray-200 rounded-lg p-5">
+      {/* Add class — admin only */}
+      {isAdmin && <section className="bg-white border border-gray-200 rounded-lg p-5">
         <h2 className="font-medium mb-4">Add Class</h2>
         <form onSubmit={handleAddClass} className="grid grid-cols-2 gap-3">
           {(['grade', 'section', 'subject', 'academic_year'] as const).map((field) => (
@@ -151,7 +154,7 @@ export default function ClassesPage() {
             Add Class
           </button>
         </form>
-      </section>
+      </section>}
 
       {/* Classes table */}
       <section className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -184,8 +187,8 @@ export default function ClassesPage() {
         )}
       </section>
 
-      {/* Upload students */}
-      <section className="bg-white border border-gray-200 rounded-lg p-5">
+      {/* Upload students — admin only */}
+      {isAdmin && <section className="bg-white border border-gray-200 rounded-lg p-5">
         <div className="flex items-center justify-between mb-1">
           <h2 className="font-medium">Upload Students (CSV)</h2>
           <button
@@ -224,7 +227,7 @@ export default function ClassesPage() {
             Upload Students
           </button>
         </form>
-      </section>
+      </section>}
 
       {/* Browse & edit students */}
       <section className="space-y-3">
@@ -272,7 +275,7 @@ export default function ClassesPage() {
                 <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                     <span className="font-mono text-sm font-semibold text-gray-700">{studentEdit.student_id}</span>
-                    <button onClick={handleDeleteStudent} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                    {isAdmin && <button onClick={handleDeleteStudent} className="text-xs text-red-400 hover:text-red-600">Delete</button>}
                   </div>
                   <form onSubmit={handleSaveStudent} className="p-4 space-y-3">
                     <div>
@@ -301,17 +304,19 @@ export default function ClassesPage() {
                       <input value={studentEdit.class_uid} readOnly
                         className="w-full border border-gray-200 rounded px-3 py-1.5 text-sm bg-gray-50 text-gray-500 font-mono" />
                     </div>
-                    <div className="flex items-center gap-3 pt-1">
-                      <button type="submit" disabled={studentSaving}
-                        className="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                        {studentSaving ? 'Saving…' : 'Save changes'}
-                      </button>
-                      {studentMsg && (
-                        <span className={`text-sm ${studentMsg.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>
-                          {studentMsg}
-                        </span>
-                      )}
-                    </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-3 pt-1">
+                        <button type="submit" disabled={studentSaving}
+                          className="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                          {studentSaving ? 'Saving…' : 'Save changes'}
+                        </button>
+                        {studentMsg && (
+                          <span className={`text-sm ${studentMsg.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>
+                            {studentMsg}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </form>
                 </div>
               )}

@@ -220,16 +220,14 @@ export default function RemedyPage() {
 
         {/* Learning goal */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">
-            Learning Goal
-          </label>
+          <label className="block text-xs text-gray-500 mb-1">Session</label>
           <select
             value={selectedCurriculumId}
             onChange={(e) => setSelectedCurriculumId(e.target.value)}
             disabled={!selectedUnit}
             className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm disabled:opacity-50"
           >
-            <option value="">Select goal…</option>
+            <option value="">Select session…</option>
             {goals.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.learning_goal}

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import BrandHeader from './BrandHeader'
+import type { Role } from '@/context/RoleContext'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -15,7 +16,7 @@ const navItems = [
   { href: '/remedy', label: 'Remedy' },
 ]
 
-export default function Sidebar({ email }: { email: string }) {
+export default function Sidebar({ email, role }: { email: string; role: Role }) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -53,11 +54,16 @@ export default function Sidebar({ email }: { email: string }) {
       </nav>
 
       <div className="px-4 py-4 border-t border-gray-200">
-        <p className="text-xs text-gray-500 truncate mb-2">{email}</p>
-        <button
-          onClick={handleSignOut}
-          className="text-xs text-gray-500 hover:text-red-600"
-        >
+        <p className="text-xs text-gray-500 truncate mb-1">{email}</p>
+        <span className={`inline-block text-xs font-medium px-1.5 py-0.5 rounded mb-2 ${
+          role === 'teacher'
+            ? 'bg-orange-100 text-orange-700'
+            : 'bg-green-100 text-green-700'
+        }`}>
+          {role === 'teacher' ? 'Teacher' : 'Admin'}
+        </span>
+        <br />
+        <button onClick={handleSignOut} className="text-xs text-gray-500 hover:text-red-600">
           Sign out
         </button>
       </div>
