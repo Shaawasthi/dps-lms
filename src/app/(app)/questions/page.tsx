@@ -55,17 +55,34 @@ export default function QuestionsPage() {
   const [qType, setQType] = useState<QType>('diagnostic')
   const [filterClass, setFilterClass] = useState('')
   const [filterUnit, setFilterUnit] = useState('')
-  const [filterGoal, setFilterGoal] = useState('')
   const [filterLevel, setFilterLevel] = useState('')
+
+  // Multi-select sessions
+  const [selectedCurriculumIds, setSelectedCurriculumIds] = useState<string[]>([])
+  const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const [selected, setSelected] = useState<QuestionDetail | null>(null)
   const [editForm, setEditForm] = useState<QuestionDetail | null>(null)
   const [curriculumLabel, setCurriculumLabel] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState('')
 
   const [uploadStatus, setUploadStatus] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Click-outside to close session dropdown
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setSessionDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
 
   useEffect(() => {
     supabase.from('classes').select('class_uid').then(({ data }) => setClasses(data ?? []))
@@ -80,14 +97,25 @@ export default function QuestionsPage() {
           .eq('grade', ci.grade).eq('subject', ci.subject)
           .then(({ data }) => setCurriculum(data ?? []))
       })
+    setSelectedCurriculumIds([])
+    setFilterUnit('')
   }, [filterClass])
 
-  useEffect(() => { fetchQuestions() }, [qType, filterClass, filterUnit, filterGoal, filterLevel, curriculum])
+  useEffect(() => {
+    setSelectedCurriculumIds([])
+    setSessionDropdownOpen(false)
+  }, [filterUnit])
+
+  useEffect(() => { fetchQuestions() }, [qType, filterClass, filterUnit, selectedCurriculumIds, filterLevel, curriculum])
 
   async function fetchQuestions() {
-    const curriculumIds = curriculum
-      .filter((c) => (!filterUnit || c.unit === filterUnit) && (!filterGoal || c.learning_goal === filterGoal))
+    // Sessions in scope: if unit is selected, restrict to that unit; otherwise all
+    const scopedIds = curriculum
+      .filter((c) => !filterUnit || c.unit === filterUnit)
       .map((c) => c.id)
+
+    // If user has chosen specific sessions, use those; otherwise use scoped ids
+    const curriculumIds = selectedCurriculumIds.length > 0 ? selectedCurriculumIds : scopedIds
 
     let q = supabase
       .from('questions')
@@ -124,18 +152,15 @@ export default function QuestionsPage() {
 
   async function handleSave() {
     if (!editForm) return
-    setSaving(true)
-    setSaveMsg('')
+    setSaving(true); setSaveMsg('')
     const { error } = await supabase.from('questions').update({
       question_text: editForm.question_text,
       option_1: editForm.option_1 || null, option_1_tag: editForm.option_1_tag || null,
       option_2: editForm.option_2 || null, option_2_tag: editForm.option_2_tag || null,
       option_3: editForm.option_3 || null, option_3_tag: editForm.option_3_tag || null,
       option_4: editForm.option_4 || null, option_4_tag: editForm.option_4_tag || null,
-      correct_answer: editForm.correct_answer,
-      level: editForm.level,
-      hint: editForm.hint || null,
-      is_remedy: editForm.is_remedy,
+      correct_answer: editForm.correct_answer, level: editForm.level,
+      hint: editForm.hint || null, is_remedy: editForm.is_remedy,
     }).eq('question_uid', editForm.question_uid)
     setSaving(false)
     if (error) { setSaveMsg('Error: ' + error.message); return }
@@ -151,9 +176,35 @@ export default function QuestionsPage() {
     fetchQuestions()
   }
 
+  async function handleDownloadClassTest() {
+    setDownloading(true); setDownloadError('')
+    try {
+      const res = await fetch('/api/class-test-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ curriculum_ids: selectedCurriculumIds }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setDownloadError(err.error ?? 'Failed to generate Excel.')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `class-test-${filterClass || 'questions'}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setDownloadError('Network error generating file.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   async function handleUpload(e: React.FormEvent) {
-    e.preventDefault()
-    setUploadStatus('')
+    e.preventDefault(); setUploadStatus('')
     const file = fileRef.current?.files?.[0]
     if (!file) return
     Papa.parse(file, {
@@ -180,7 +231,7 @@ export default function QuestionsPage() {
           is_remedy: r.is_remedy === 'true' || r.is_remedy === '1',
         }))
         const missing = records.filter((r) => !r.curriculum_id)
-        if (missing.length) { setUploadStatus(`Error: ${missing.length} row(s) have no matching session. Upload curriculum CSV first.`); return }
+        if (missing.length) { setUploadStatus(`Error: ${missing.length} row(s) have no matching session.`); return }
         const { error } = await supabase.from('questions').upsert(records, { onConflict: 'question_uid' })
         if (error) { setUploadStatus('Error: ' + error.message); return }
         setUploadStatus(`Uploaded ${records.length} questions.`)
@@ -191,7 +242,20 @@ export default function QuestionsPage() {
   }
 
   const units = Array.from(new Set(curriculum.map((c) => c.unit)))
-  const goals = Array.from(new Set(curriculum.filter((c) => !filterUnit || c.unit === filterUnit).map((c) => c.learning_goal)))
+  const filteredSessions = curriculum.filter((c) => !filterUnit || c.unit === filterUnit)
+  const allSelected = filteredSessions.length > 0 && selectedCurriculumIds.length === filteredSessions.length
+  const someSelected = selectedCurriculumIds.length > 0 && !allSelected
+
+  function toggleSession(id: string) {
+    setSelectedCurriculumIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
+  function toggleAllSessions() {
+    if (allSelected) setSelectedCurriculumIds([])
+    else setSelectedCurriculumIds(filteredSessions.map((c) => c.id))
+  }
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -230,21 +294,59 @@ export default function QuestionsPage() {
         <div className="col-span-2 space-y-3">
           {/* Filters */}
           <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
-            <select value={filterClass} onChange={(e) => { setFilterClass(e.target.value); setFilterUnit(''); setFilterGoal('') }}
+            {/* Class */}
+            <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)}
               className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
               <option value="">All classes</option>
               {classes.map((c) => <option key={c.class_uid} value={c.class_uid}>{c.class_uid}</option>)}
             </select>
-            <select value={filterUnit} onChange={(e) => { setFilterUnit(e.target.value); setFilterGoal('') }}
-              disabled={!filterClass} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm disabled:opacity-50">
+
+            {/* Unit */}
+            <select value={filterUnit} onChange={(e) => setFilterUnit(e.target.value)}
+              disabled={!filterClass}
+              className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm disabled:opacity-50">
               <option value="">All units</option>
               {units.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
-            <select value={filterGoal} onChange={(e) => setFilterGoal(e.target.value)}
-              disabled={!filterUnit} className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm disabled:opacity-50">
-              <option value="">All sessions</option>
-              {goals.map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
+
+            {/* Session multi-select */}
+            <div ref={dropdownRef} className="relative">
+              <button type="button"
+                onClick={() => setSessionDropdownOpen((o) => !o)}
+                disabled={!filterClass}
+                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-left flex items-center justify-between disabled:opacity-50 bg-white">
+                <span className="truncate text-gray-700">
+                  {selectedCurriculumIds.length === 0
+                    ? 'All sessions'
+                    : `${selectedCurriculumIds.length} session${selectedCurriculumIds.length > 1 ? 's' : ''} selected`}
+                </span>
+                <span className="text-gray-400 ml-2 flex-shrink-0">▾</span>
+              </button>
+
+              {sessionDropdownOpen && filteredSessions.length > 0 && (
+                <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                  {/* Select all */}
+                  <label className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100">
+                    <input type="checkbox" checked={allSelected}
+                      ref={(el) => { if (el) el.indeterminate = someSelected }}
+                      onChange={toggleAllSessions}
+                      className="w-4 h-4 rounded flex-shrink-0" />
+                    <span className="text-sm font-medium text-gray-700">Select all</span>
+                  </label>
+                  {filteredSessions.map((c) => (
+                    <label key={c.id} className="flex items-start gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                      <input type="checkbox"
+                        checked={selectedCurriculumIds.includes(c.id)}
+                        onChange={() => toggleSession(c.id)}
+                        className="w-4 h-4 rounded flex-shrink-0 mt-0.5" />
+                      <span className="text-xs text-gray-700 leading-snug">{c.learning_goal}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Level */}
             <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}
               className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
               <option value="">All levels</option>
@@ -254,7 +356,6 @@ export default function QuestionsPage() {
 
           {/* Tabs + question list */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            {/* Tabs */}
             <div className="flex border-b border-gray-200">
               {(['diagnostic', 'remedy'] as QType[]).map((t) => (
                 <button key={t} onClick={() => { setQType(t); setSelected(null); setEditForm(null) }}
@@ -275,7 +376,7 @@ export default function QuestionsPage() {
             {questions.length === 0 ? (
               <p className="px-3 py-4 text-sm text-gray-400">No {qType} questions.</p>
             ) : (
-              <ul className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto">
+              <ul className="divide-y divide-gray-100 max-h-[52vh] overflow-y-auto">
                 {questions.map((q) => (
                   <li key={q.question_uid}
                     onClick={() => handleSelectQuestion(q.question_uid)}
@@ -290,6 +391,22 @@ export default function QuestionsPage() {
               </ul>
             )}
           </div>
+
+          {/* Download Class Test — only on Diagnostic tab with sessions selected */}
+          {qType === 'diagnostic' && selectedCurriculumIds.length > 0 && (
+            <div className="space-y-1">
+              <button onClick={handleDownloadClassTest} disabled={downloading}
+                className="w-full bg-green-700 text-white rounded-lg px-3 py-2.5 text-sm font-semibold hover:bg-green-800 disabled:opacity-50 flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {downloading
+                  ? 'Generating…'
+                  : `Download Class Test (${selectedCurriculumIds.length} session${selectedCurriculumIds.length > 1 ? 's' : ''})`}
+              </button>
+              {downloadError && <p className="text-xs text-red-600">{downloadError}</p>}
+            </div>
+          )}
         </div>
 
         {/* Right: detail */}
@@ -318,7 +435,7 @@ export default function QuestionsPage() {
                     <label className="block text-xs text-gray-500 mb-1">Level</label>
                     <select value={editForm.level ?? ''} onChange={(e) => setField('level', e.target.value || null)}
                       disabled={!isAdmin}
-                      className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50 disabled:text-gray-600">
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
                       <option value="">—</option>
                       {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
                     </select>
@@ -336,7 +453,7 @@ export default function QuestionsPage() {
                   <label className="block text-xs text-gray-500 mb-1">Correct Answer</label>
                   <select value={editForm.correct_answer} onChange={(e) => setField('correct_answer', e.target.value)}
                     disabled={!isAdmin}
-                    className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50 disabled:text-gray-600">
+                    className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
                     {OPTION_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
                   </select>
                 </div>
@@ -345,7 +462,7 @@ export default function QuestionsPage() {
                   <label className="block text-xs text-gray-500 mb-1">Question Text</label>
                   <textarea value={editForm.question_text} onChange={(e) => setField('question_text', e.target.value)}
                     rows={3} readOnly={!isAdmin}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-y read-only:bg-gray-50 read-only:text-gray-700" />
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-y read-only:bg-gray-50" />
                 </div>
 
                 <div>
@@ -357,12 +474,10 @@ export default function QuestionsPage() {
                           editForm.correct_answer === OPTION_LABELS[i] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                         }`}>{OPTION_LABELS[i]}</span>
                         <input value={editForm[optKey] ?? ''} onChange={(e) => setField(optKey, e.target.value || null)}
-                          readOnly={!isAdmin}
-                          placeholder={`Option ${OPTION_LABELS[i]}`}
-                          className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm read-only:bg-gray-50 read-only:text-gray-700" />
+                          readOnly={!isAdmin} placeholder={`Option ${OPTION_LABELS[i]}`}
+                          className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm read-only:bg-gray-50" />
                         <input value={editForm[tagKey] ?? ''} onChange={(e) => setField(tagKey, e.target.value || null)}
-                          readOnly={!isAdmin}
-                          placeholder="tag"
+                          readOnly={!isAdmin} placeholder="tag"
                           className="w-24 border border-gray-300 rounded px-2 py-1.5 text-xs font-mono read-only:bg-gray-50" />
                       </div>
                     ))}
@@ -373,7 +488,7 @@ export default function QuestionsPage() {
                   <label className="block text-xs text-gray-500 mb-1">Hint</label>
                   <textarea value={editForm.hint ?? ''} onChange={(e) => setField('hint', e.target.value || null)}
                     rows={2} readOnly={!isAdmin}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-y read-only:bg-gray-50 read-only:text-gray-700" />
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-y read-only:bg-gray-50" />
                 </div>
 
                 {isAdmin && (
