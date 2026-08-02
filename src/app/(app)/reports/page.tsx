@@ -129,7 +129,7 @@ export default function ReportsPage() {
   function cellColor(p: number | null) {
     if (p === null) return 'bg-gray-50 text-gray-300'
     if (p >= 60) return 'bg-green-50 text-green-800'
-    return 'bg-red-50 text-red-700'
+    return 'text-gray-700'
   }
 
   return (

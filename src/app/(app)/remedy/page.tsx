@@ -8,6 +8,8 @@ type Student = { student_id: string; name: string }
 type CurriculumEntry = { id: string; unit: string; learning_goal: string }
 type ScoreRow = { level: string; correct: number; total: number }
 
+const ALL_STUDENTS = '__all__'
+
 export default function RemedyPage() {
   const supabase = createClient()
 
@@ -22,6 +24,7 @@ export default function RemedyPage() {
   const [selectedCurriculumId, setSelectedCurriculumId] = useState('')
   const [scoreBreakdown, setScoreBreakdown] = useState<ScoreRow[]>([])
   const [generating, setGenerating] = useState(false)
+  const [genProgress, setGenProgress] = useState('')
   const [genError, setGenError] = useState('')
 
   useEffect(() => {
@@ -40,7 +43,6 @@ export default function RemedyPage() {
       .order('name')
       .then(({ data }) => setStudents(data ?? []))
 
-    // Load curriculum for this class's grade+subject
     supabase
       .from('classes')
       .select('grade, subject')
@@ -73,7 +75,7 @@ export default function RemedyPage() {
   }, [selectedUnit, curriculum])
 
   useEffect(() => {
-    if (!selectedCurriculumId || !selectedStudent) {
+    if (!selectedCurriculumId || !selectedStudent || selectedStudent === ALL_STUDENTS) {
       setScoreBreakdown([])
       return
     }
@@ -117,38 +119,57 @@ export default function RemedyPage() {
   }
 
   async function handleGeneratePDF() {
-    if (!selectedStudent || !selectedCurriculumId) return
+    if (!selectedCurriculumId || !selectedStudent) return
     setGenerating(true)
     setGenError('')
+    setGenProgress('')
 
-    try {
-      const res = await fetch('/api/remedy-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          student_id: selectedStudent,
-          curriculum_id: selectedCurriculumId,
-        }),
-      })
+    const targets =
+      selectedStudent === ALL_STUDENTS
+        ? students.map((s) => s.student_id)
+        : [selectedStudent]
 
-      if (!res.ok) {
-        const err = await res.json()
-        setGenError(err.error ?? 'Failed to generate PDF.')
-        return
+    for (let i = 0; i < targets.length; i++) {
+      const sid = targets[i]
+      if (targets.length > 1) {
+        setGenProgress(`Generating ${i + 1} / ${targets.length}…`)
       }
 
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `remedy-${selectedStudent}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      setGenError('Network error generating PDF.')
-    } finally {
-      setGenerating(false)
+      try {
+        const res = await fetch('/api/remedy-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            student_id: sid,
+            curriculum_id: selectedCurriculumId,
+          }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json()
+          setGenError(`Error for ${sid}: ${err.error ?? 'Failed to generate PDF.'}`)
+          continue
+        }
+
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `remedy-${sid}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+
+        // Small gap so browser doesn't block rapid-fire downloads
+        if (i < targets.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300))
+        }
+      } catch {
+        setGenError(`Network error generating PDF for ${sid}.`)
+      }
     }
+
+    setGenerating(false)
+    setGenProgress('')
   }
 
   return (
@@ -192,6 +213,7 @@ export default function RemedyPage() {
             className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm disabled:opacity-50"
           >
             <option value="">Select student…</option>
+            <option value={ALL_STUDENTS}>All students ({students.length})</option>
             {students.map((s) => (
               <option key={s.student_id} value={s.student_id}>
                 {s.name} ({s.student_id})
@@ -237,8 +259,8 @@ export default function RemedyPage() {
         </div>
       </div>
 
-      {/* Score breakdown */}
-      {scoreBreakdown.length > 0 && (
+      {/* Score breakdown — only for a single student */}
+      {scoreBreakdown.length > 0 && selectedStudent !== ALL_STUDENTS && (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <h2 className="font-medium px-5 py-4 border-b border-gray-200">
             Score Breakdown
@@ -249,7 +271,6 @@ export default function RemedyPage() {
                 <th className="px-4 py-2 font-medium">Level</th>
                 <th className="px-4 py-2 font-medium">Score</th>
                 <th className="px-4 py-2 font-medium">%</th>
-                <th className="px-4 py-2 font-medium">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -262,24 +283,9 @@ export default function RemedyPage() {
                   <tr key={row.level}>
                     <td className="px-4 py-2">{row.level}</td>
                     <td className="px-4 py-2">
-                      {row.total > 0
-                        ? `${row.correct} / ${row.total}`
-                        : 'No data'}
+                      {row.total > 0 ? `${row.correct} / ${row.total}` : 'No data'}
                     </td>
                     <td className="px-4 py-2">{pct !== null ? `${pct}%` : '—'}</td>
-                    <td className="px-4 py-2">
-                      {pct === null ? (
-                        <span className="text-gray-400 text-xs">—</span>
-                      ) : pct >= 60 ? (
-                        <span className="text-green-700 text-xs font-medium">
-                          Pass
-                        </span>
-                      ) : (
-                        <span className="text-red-600 text-xs font-medium">
-                          Fail
-                        </span>
-                      )}
-                    </td>
                   </tr>
                 )
               })}
@@ -296,7 +302,11 @@ export default function RemedyPage() {
             disabled={generating}
             className="bg-blue-600 text-white rounded px-5 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            {generating ? 'Generating PDF…' : 'Generate Remedy PDF'}
+            {generating
+              ? genProgress || 'Generating PDF…'
+              : selectedStudent === ALL_STUDENTS
+              ? `Generate PDFs for All Students (${students.length})`
+              : 'Generate Remedy PDF'}
           </button>
           {genError && <p className="text-sm text-red-600">{genError}</p>}
         </div>
