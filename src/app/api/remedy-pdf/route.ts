@@ -18,7 +18,7 @@ type Question = {
   hint: string | null
 }
 
-type Response = {
+type ResponseRow = {
   question_uid: string
   is_correct: boolean
   response_option: string | null
@@ -34,42 +34,72 @@ type QuestionMeta = {
 }
 
 const LEVELS = ['Theory', 'Understanding', 'Application'] as const
+type Level = (typeof LEVELS)[number]
 
-function dominantMisconception(
-  responses: Response[],
-  qMeta: QuestionMeta[]
-): string | null {
+// ── Misconception helpers ────────────────────────────────────────────────────
+
+// All distinct misconception codes the student demonstrated via wrong answers
+function getMisconceptions(responses: ResponseRow[], qMeta: QuestionMeta[]): Set<string> {
   const metaMap = new Map(qMeta.map((q) => [q.question_uid, q]))
-  const tally = new Map<string, number>()
-
+  const codes = new Set<string>()
   for (const r of responses) {
     if (r.is_correct || !r.response_option) continue
     const meta = metaMap.get(r.question_uid)
     if (!meta) continue
-
-    // Map the chosen option letter to its tag
-    const optionKey = `option_${r.response_option.toLowerCase()}_tag` as
-      | 'option_1_tag'
-      | 'option_2_tag'
-      | 'option_3_tag'
-      | 'option_4_tag'
-
-    // Handle both letter (A/B/C/D) and number (1/2/3/4) formats
-    let tag: string | null = null
     const opt = r.response_option.toUpperCase()
+    let tag: string | null = null
     if (opt === 'A' || opt === '1') tag = meta.option_1_tag
     else if (opt === 'B' || opt === '2') tag = meta.option_2_tag
     else if (opt === 'C' || opt === '3') tag = meta.option_3_tag
     else if (opt === 'D' || opt === '4') tag = meta.option_4_tag
+    if (tag) codes.add(tag)
+  }
+  return codes
+}
 
+// Most-frequently demonstrated misconception code (for PDF header)
+function dominantCode(responses: ResponseRow[], qMeta: QuestionMeta[]): string | null {
+  const metaMap = new Map(qMeta.map((q) => [q.question_uid, q]))
+  const tally = new Map<string, number>()
+  for (const r of responses) {
+    if (r.is_correct || !r.response_option) continue
+    const meta = metaMap.get(r.question_uid)
+    if (!meta) continue
+    const opt = r.response_option.toUpperCase()
+    let tag: string | null = null
+    if (opt === 'A' || opt === '1') tag = meta.option_1_tag
+    else if (opt === 'B' || opt === '2') tag = meta.option_2_tag
+    else if (opt === 'C' || opt === '3') tag = meta.option_3_tag
+    else if (opt === 'D' || opt === '4') tag = meta.option_4_tag
     if (tag) tally.set(tag, (tally.get(tag) ?? 0) + 1)
   }
-
   if (tally.size === 0) return null
-
-  // Return the most frequently demonstrated misconception
   return Array.from(tally.entries()).sort((a, b) => b[1] - a[1])[0][0]
 }
+
+// ── Distribution table (20 questions total) ──────────────────────────────────
+//
+// miscCount │ Theory │ Understanding │ Application │ Source
+// ──────────┼────────┼──────────────┼─────────────┼───────────────────────────
+//     0     │   0    │      6       │     14      │ All session codes
+//     1     │   6    │      4       │     10      │ 75% dominant, 25% others
+//     2     │   6    │      6       │      8      │ All identified codes
+//    3+     │  10    │      6       │      4      │ All identified codes
+//
+function getDistribution(miscCount: number): Record<Level, number> {
+  if (miscCount === 0) return { Theory: 0, Understanding: 6, Application: 14 }
+  if (miscCount === 1) return { Theory: 6, Understanding: 4, Application: 10 }
+  if (miscCount === 2) return { Theory: 6, Understanding: 6, Application: 8 }
+  return { Theory: 10, Understanding: 6, Application: 4 }
+}
+
+function hasAnyTag(q: Question, codes: Set<string>): boolean {
+  return [q.option_1_tag, q.option_2_tag, q.option_3_tag, q.option_4_tag].some(
+    (t) => t !== null && codes.has(t)
+  )
+}
+
+// ── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   const supabase = createClient()
@@ -85,8 +115,8 @@ export async function POST(request: NextRequest) {
     curriculum_id: string
   }
 
-  // Fetch student + curriculum info in parallel
-  const [{ data: student }, { data: curric }, { data: qMeta }] =
+  // ── Fetch base data ──────────────────────────────────────────────────────
+  const [{ data: student }, { data: curric }, { data: diagMetaRaw }, { data: remedyRaw }] =
     await Promise.all([
       supabase
         .from('students')
@@ -98,115 +128,122 @@ export async function POST(request: NextRequest) {
         .select('unit, learning_goal')
         .eq('id', curriculum_id)
         .single(),
+      // Diagnostic question meta — used to identify misconceptions from responses
+      supabase
+        .from('questions')
+        .select('question_uid, level, option_1_tag, option_2_tag, option_3_tag, option_4_tag')
+        .eq('curriculum_id', curriculum_id)
+        .eq('is_remedy', false),
+      // Full remedy question data — the candidate pool for the worksheet
       supabase
         .from('questions')
         .select(
-          'question_uid, level, option_1_tag, option_2_tag, option_3_tag, option_4_tag'
+          'question_uid, question_text, option_1, option_2, option_3, option_4, ' +
+            'option_1_tag, option_2_tag, option_3_tag, option_4_tag, correct_answer, level, hint'
         )
-        .eq('curriculum_id', curriculum_id),
+        .eq('curriculum_id', curriculum_id)
+        .eq('is_remedy', true),
     ])
 
-  const questionUids = (qMeta ?? []).map((q) => q.question_uid)
+  const diagMeta: QuestionMeta[] = diagMetaRaw ?? []
+  const remedyPool: Question[] = remedyRaw ?? []
 
-  // Fetch student responses for this session
-  const { data: responses } = questionUids.length
+  // ── Student responses on diagnostic questions ────────────────────────────
+  const diagUids = diagMeta.map((q) => q.question_uid)
+  const { data: responsesRaw } = diagUids.length
     ? await supabase
         .from('responses')
         .select('question_uid, is_correct, response_option')
         .eq('student_id', student_id)
-        .in('question_uid', questionUids)
+        .in('question_uid', diagUids)
     : { data: [] }
+  const responses: ResponseRow[] = responsesRaw ?? []
 
-  const allResponses = responses ?? []
+  // ── Misconception analysis ───────────────────────────────────────────────
+  const studentCodes = getMisconceptions(responses, diagMeta)
+  const topCode = dominantCode(responses, diagMeta)
+  const miscCount = studentCodes.size
+  const distribution = getDistribution(miscCount)
 
-  // Determine target level (lowest failing level < 60%)
-  let targetLevel: string | null = null
-  if (allResponses.length > 0) {
-    for (const level of LEVELS) {
-      const levelUids = new Set(
-        (qMeta ?? []).filter((q) => q.level === level).map((q) => q.question_uid)
-      )
-      const levelResps = allResponses.filter((r) => levelUids.has(r.question_uid))
-      if (levelResps.length === 0) continue
-      const pct =
-        (levelResps.filter((r) => r.is_correct).length / levelResps.length) * 100
-      if (pct < 60) {
-        targetLevel = level
-        break
-      }
+  // All codes present in the session's remedy questions (for fallback pool)
+  const sessionCodes = new Set<string>()
+  for (const q of remedyPool) {
+    for (const t of [q.option_1_tag, q.option_2_tag, q.option_3_tag, q.option_4_tag]) {
+      if (t) sessionCodes.add(t)
     }
   }
+  const otherSessionCodes = new Set(
+    Array.from(sessionCodes).filter((c) => !studentCodes.has(c))
+  )
 
-  // Find dominant misconception from wrong answers
-  const topMisconception = dominantMisconception(allResponses, qMeta ?? [])
-
-  // Fetch misconception description if we found one
-  let misconceptionDesc: string | null = null
-  if (topMisconception) {
+  // Fetch misconception description for PDF header (dominant code only)
+  let topDesc: string | null = null
+  if (topCode) {
     const { data: mc } = await supabase
       .from('misconceptions')
       .select('description')
-      .eq('code', topMisconception)
+      .eq('code', topCode)
       .single()
-    misconceptionDesc = mc?.description ?? null
+    topDesc = mc?.description ?? null
   }
 
-  // Build remedy question query
-  // Priority 1: remedy questions for the dominant misconception tag
-  // Priority 2: all remedy questions for the session (filtered by level if known)
-  let questions: Question[] = []
+  // ── Build question list level-by-level ───────────────────────────────────
+  //
+  // Three-tier priority for each level slot:
+  //   1. Remedy questions tagged to student's own misconception codes
+  //   2. Remedy questions tagged to other session codes  (fallback)
+  //   3. Any remedy question for this session            (last resort)
+  //
+  const selected: Question[] = []
+  const usedUids = new Set<string>()
 
-  if (topMisconception) {
-    // Pull questions where any option tag matches the dominant misconception
-    // These are questions DESIGNED to address this specific misconception
-    const { data: mcQuestions } = await supabase
-      .from('questions')
-      .select(
-        'question_uid, question_text, option_1, option_2, option_3, option_4, option_1_tag, option_2_tag, option_3_tag, option_4_tag, correct_answer, level, hint'
-      )
-      .eq('curriculum_id', curriculum_id)
-      .eq('is_remedy', true)
-      .or(
-        `option_1_tag.eq.${topMisconception},option_2_tag.eq.${topMisconception},option_3_tag.eq.${topMisconception},option_4_tag.eq.${topMisconception}`
-      )
-      .limit(10)
-
-    questions = mcQuestions ?? []
+  function take(pool: Question[], level: string, n: number): Question[] {
+    const picked: Question[] = []
+    for (const q of pool) {
+      if (picked.length >= n) break
+      if (q.level === level && !usedUids.has(q.question_uid)) {
+        picked.push(q)
+        usedUids.add(q.question_uid)
+      }
+    }
+    return picked
   }
 
-  // Fill remaining slots from general session remedy questions
-  if (questions.length < 5) {
-    let fillQuery = supabase
-      .from('questions')
-      .select(
-        'question_uid, question_text, option_1, option_2, option_3, option_4, option_1_tag, option_2_tag, option_3_tag, option_4_tag, correct_answer, level, hint'
-      )
-      .eq('curriculum_id', curriculum_id)
-      .eq('is_remedy', true)
+  for (const level of LEVELS) {
+    let remaining = distribution[level]
+    if (remaining === 0) continue
 
-    if (targetLevel) fillQuery = fillQuery.eq('level', targetLevel)
-
-    // Exclude questions already included
-    const alreadyIn = questions.map((q) => q.question_uid)
-    if (alreadyIn.length > 0) {
-      fillQuery = fillQuery.not('question_uid', 'in', `(${alreadyIn.join(',')})`)
+    // Priority 1 — student's own codes
+    if (studentCodes.size > 0) {
+      const p1 = remedyPool.filter((q) => hasAnyTag(q, studentCodes))
+      const taken = take(p1, level, remaining)
+      selected.push(...taken)
+      remaining -= taken.length
     }
 
-    const { data: fillQuestions } = await fillQuery
-      .order('level')
-      .limit(20 - questions.length)
+    // Priority 2 — other session codes
+    if (remaining > 0 && otherSessionCodes.size > 0) {
+      const p2 = remedyPool.filter((q) => hasAnyTag(q, otherSessionCodes))
+      const taken = take(p2, level, remaining)
+      selected.push(...taken)
+      remaining -= taken.length
+    }
 
-    questions = [...questions, ...(fillQuestions ?? [])]
+    // Priority 3 — any remedy question (catches miscCount=0 and thin pools)
+    if (remaining > 0) {
+      const taken = take(remedyPool, level, remaining)
+      selected.push(...taken)
+    }
   }
 
-  if (questions.length === 0) {
+  if (selected.length === 0) {
     return NextResponse.json(
       { error: 'No remedy questions found for this session.' },
       { status: 404 }
     )
   }
 
-  // ── PDF generation ──────────────────────────────────────────────
+  // ── PDF generation ───────────────────────────────────────────────────────
   const pdf = await PDFDocument.create()
   const font = await pdf.embedFont(StandardFonts.Helvetica)
   const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold)
@@ -253,17 +290,21 @@ export async function POST(request: NextRequest) {
   })
   y -= 26
 
-  const meta = [
+  const tierLabel =
+    miscCount === 0
+      ? 'General challenge (no misconceptions identified)'
+      : miscCount === 1
+      ? `1 misconception identified: ${topCode}${topDesc ? ` — ${topDesc}` : ''}`
+      : `${miscCount} misconceptions identified: ${Array.from(studentCodes).join(', ')}`
+
+  const headerLines = [
     `Student: ${student?.name ?? student_id}`,
     `Session: ${curric?.unit ?? ''} — ${curric?.learning_goal ?? ''}`,
-    ...(targetLevel ? [`Focus Level: ${targetLevel}`] : []),
-    ...(topMisconception
-      ? [`Addressing: ${topMisconception}${misconceptionDesc ? ` — ${misconceptionDesc}` : ''}`]
-      : []),
+    tierLabel,
     `Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`,
   ]
 
-  for (const line of meta) {
+  for (const line of headerLines) {
     const wrapped = wrapText(line, CONTENT_WIDTH, 10)
     for (const l of wrapped) {
       page.drawText(l, { x: MARGIN, y, size: 10, font, color: rgb(0.2, 0.2, 0.2) })
@@ -281,17 +322,15 @@ export async function POST(request: NextRequest) {
   y -= 16
 
   // Questions
-  questions.forEach((q, i) => {
+  selected.forEach((q, i) => {
     const qLines = wrapText(`Q${i + 1}. ${q.question_text}`, CONTENT_WIDTH, 11)
     ensureSpace(qLines.length * 16 + 80)
 
-    // Question text
     for (const line of qLines) {
       page.drawText(line, { x: MARGIN, y, size: 11, font: boldFont, color: rgb(0, 0, 0) })
       y -= 15
     }
 
-    // Level badge
     page.drawText(`[${q.level}]`, {
       x: PAGE_WIDTH - MARGIN - font.widthOfTextAtSize(`[${q.level}]`, 9),
       y: y + 15 * qLines.length,
@@ -300,7 +339,6 @@ export async function POST(request: NextRequest) {
 
     y -= 4
 
-    // Options
     const opts = [
       { label: 'A', text: q.option_1 },
       { label: 'B', text: q.option_2 },
@@ -317,7 +355,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Hint
     if (q.hint) {
       y -= 4
       const hintLines = wrapText(`Hint: ${q.hint}`, CONTENT_WIDTH - 16, 9)
@@ -330,7 +367,7 @@ export async function POST(request: NextRequest) {
 
     y -= 14
 
-    if (i < questions.length - 1) {
+    if (i < selected.length - 1) {
       page.drawLine({
         start: { x: MARGIN, y },
         end: { x: PAGE_WIDTH - MARGIN, y },
