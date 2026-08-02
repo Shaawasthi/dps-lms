@@ -71,15 +71,17 @@ export default function ResponsesPage() {
             return
           }
 
-          // Build roll_number → student_id map
+          // Build clicker roll_number (DPSN code) → student_id map
+          // Clicker CSV exports the DPSN admission code as roll_number,
+          // which matches student_id in the students table (not roll_number).
           const rollNumbers = Array.from(new Set(attempted.map((r) => r.roll_number)))
           const { data: students } = await supabase
             .from('students')
-            .select('student_id, roll_number')
-            .in('roll_number', rollNumbers)
+            .select('student_id')
+            .in('student_id', rollNumbers)
 
           const rollMap = new Map<string, string>()
-          for (const s of students ?? []) rollMap.set(s.roll_number, s.student_id)
+          for (const s of students ?? []) rollMap.set(s.student_id, s.student_id)
 
           const missing = rollNumbers.filter((rn) => !rollMap.has(rn))
           if (missing.length) {
