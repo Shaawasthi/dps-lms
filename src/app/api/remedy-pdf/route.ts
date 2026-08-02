@@ -38,7 +38,6 @@ type Level = (typeof LEVELS)[number]
 
 // ── Misconception helpers ────────────────────────────────────────────────────
 
-// All distinct misconception codes the student demonstrated via wrong answers
 function getMisconceptions(responses: ResponseRow[], qMeta: QuestionMeta[]): Set<string> {
   const metaMap = new Map(qMeta.map((q) => [q.question_uid, q]))
   const codes = new Set<string>()
@@ -57,7 +56,6 @@ function getMisconceptions(responses: ResponseRow[], qMeta: QuestionMeta[]): Set
   return codes
 }
 
-// Most-frequently demonstrated misconception code (for PDF header)
 function dominantCode(responses: ResponseRow[], qMeta: QuestionMeta[]): string | null {
   const metaMap = new Map(qMeta.map((q) => [q.question_uid, q]))
   const tally = new Map<string, number>()
@@ -82,7 +80,7 @@ function dominantCode(responses: ResponseRow[], qMeta: QuestionMeta[]): string |
 // miscCount │ Theory │ Understanding │ Application │ Source
 // ──────────┼────────┼──────────────┼─────────────┼───────────────────────────
 //     0     │   0    │      6       │     14      │ All session codes
-//     1     │   6    │      4       │     10      │ 75% dominant, 25% others
+//     1     │   6    │      4       │     10      │ 75 % dominant, 25 % others
 //     2     │   6    │      6       │      8      │ All identified codes
 //    3+     │  10    │      6       │      4      │ All identified codes
 //
@@ -116,34 +114,22 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Fetch base data ──────────────────────────────────────────────────────
-  const [{ data: student }, { data: curric }, { data: diagMetaRaw }, { data: remedyRaw }] =
-    await Promise.all([
-      supabase
-        .from('students')
-        .select('name, student_id')
-        .eq('student_id', student_id)
-        .single(),
-      supabase
-        .from('curriculum')
-        .select('unit, learning_goal')
-        .eq('id', curriculum_id)
-        .single(),
-      // Diagnostic question meta — used to identify misconceptions from responses
-      supabase
-        .from('questions')
-        .select('question_uid, level, option_1_tag, option_2_tag, option_3_tag, option_4_tag')
-        .eq('curriculum_id', curriculum_id)
-        .eq('is_remedy', false),
-      // Full remedy question data — the candidate pool for the worksheet
-      supabase
-        .from('questions')
-        .select(
-          'question_uid, question_text, option_1, option_2, option_3, option_4, ' +
-            'option_1_tag, option_2_tag, option_3_tag, option_4_tag, correct_answer, level, hint'
-        )
-        .eq('curriculum_id', curriculum_id)
-        .eq('is_remedy', true),
-    ])
+  const [{ data: student }, { data: curric }, { data: diagMetaRaw }] = await Promise.all([
+    supabase.from('students').select('name, student_id').eq('student_id', student_id).single(),
+    supabase.from('curriculum').select('unit, learning_goal').eq('id', curriculum_id).single(),
+    supabase
+      .from('questions')
+      .select('question_uid, level, option_1_tag, option_2_tag, option_3_tag, option_4_tag')
+      .eq('curriculum_id', curriculum_id)
+      .eq('is_remedy', false),
+  ])
+
+  // Remedy pool — separate query with explicit cast to avoid TS GenericStringError
+  const { data: remedyRaw } = await (supabase
+    .from('questions')
+    .select('question_uid, question_text, option_1, option_2, option_3, option_4, option_1_tag, option_2_tag, option_3_tag, option_4_tag, correct_answer, level, hint')
+    .eq('curriculum_id', curriculum_id)
+    .eq('is_remedy', true) as unknown as Promise<{ data: Question[] | null }>)
 
   const diagMeta: QuestionMeta[] = diagMetaRaw ?? []
   const remedyPool: Question[] = remedyRaw ?? []
@@ -165,7 +151,6 @@ export async function POST(request: NextRequest) {
   const miscCount = studentCodes.size
   const distribution = getDistribution(miscCount)
 
-  // All codes present in the session's remedy questions (for fallback pool)
   const sessionCodes = new Set<string>()
   for (const q of remedyPool) {
     for (const t of [q.option_1_tag, q.option_2_tag, q.option_3_tag, q.option_4_tag]) {
@@ -176,7 +161,6 @@ export async function POST(request: NextRequest) {
     Array.from(sessionCodes).filter((c) => !studentCodes.has(c))
   )
 
-  // Fetch misconception description for PDF header (dominant code only)
   let topDesc: string | null = null
   if (topCode) {
     const { data: mc } = await supabase
@@ -189,10 +173,10 @@ export async function POST(request: NextRequest) {
 
   // ── Build question list level-by-level ───────────────────────────────────
   //
-  // Three-tier priority for each level slot:
-  //   1. Remedy questions tagged to student's own misconception codes
-  //   2. Remedy questions tagged to other session codes  (fallback)
-  //   3. Any remedy question for this session            (last resort)
+  // Three-tier priority per level slot:
+  //   1. Student's own misconception codes
+  //   2. Other session codes  (fallback)
+  //   3. Any remedy question  (last resort)
   //
   const selected: Question[] = []
   const usedUids = new Set<string>()
@@ -213,7 +197,6 @@ export async function POST(request: NextRequest) {
     let remaining = distribution[level]
     if (remaining === 0) continue
 
-    // Priority 1 — student's own codes
     if (studentCodes.size > 0) {
       const p1 = remedyPool.filter((q) => hasAnyTag(q, studentCodes))
       const taken = take(p1, level, remaining)
@@ -221,7 +204,6 @@ export async function POST(request: NextRequest) {
       remaining -= taken.length
     }
 
-    // Priority 2 — other session codes
     if (remaining > 0 && otherSessionCodes.size > 0) {
       const p2 = remedyPool.filter((q) => hasAnyTag(q, otherSessionCodes))
       const taken = take(p2, level, remaining)
@@ -229,7 +211,6 @@ export async function POST(request: NextRequest) {
       remaining -= taken.length
     }
 
-    // Priority 3 — any remedy question (catches miscCount=0 and thin pools)
     if (remaining > 0) {
       const taken = take(remedyPool, level, remaining)
       selected.push(...taken)
@@ -242,6 +223,28 @@ export async function POST(request: NextRequest) {
       { status: 404 }
     )
   }
+
+  // ── Log this generation (fire-and-forget, does not block PDF) ────────────
+  const theoryCnt = selected.filter((q) => q.level === 'Theory').length
+  const understandingCnt = selected.filter((q) => q.level === 'Understanding').length
+  const applicationCnt = selected.filter((q) => q.level === 'Application').length
+
+  supabase
+    .from('remedy_logs')
+    .insert({
+      student_id,
+      student_name: student?.name ?? student_id,
+      curriculum_id,
+      unit: curric?.unit ?? '',
+      session_name: curric?.learning_goal ?? '',
+      misconception_count: miscCount,
+      theory_count: theoryCnt,
+      understanding_count: understandingCnt,
+      application_count: applicationCnt,
+      total_questions: selected.length,
+      generated_by: user.id,
+    })
+    .then()
 
   // ── PDF generation ───────────────────────────────────────────────────────
   const pdf = await PDFDocument.create()
@@ -292,10 +295,10 @@ export async function POST(request: NextRequest) {
 
   const tierLabel =
     miscCount === 0
-      ? 'General challenge (no misconceptions identified)'
+      ? 'Misconceptions: None identified — general challenge questions'
       : miscCount === 1
-      ? `1 misconception identified: ${topCode}${topDesc ? ` — ${topDesc}` : ''}`
-      : `${miscCount} misconceptions identified: ${Array.from(studentCodes).join(', ')}`
+      ? `Misconception: ${topCode}${topDesc ? ` — ${topDesc}` : ''}`
+      : `Misconceptions identified: ${Array.from(studentCodes).join(', ')}`
 
   const headerLines = [
     `Student: ${student?.name ?? student_id}`,
@@ -330,12 +333,6 @@ export async function POST(request: NextRequest) {
       page.drawText(line, { x: MARGIN, y, size: 11, font: boldFont, color: rgb(0, 0, 0) })
       y -= 15
     }
-
-    page.drawText(`[${q.level}]`, {
-      x: PAGE_WIDTH - MARGIN - font.widthOfTextAtSize(`[${q.level}]`, 9),
-      y: y + 15 * qLines.length,
-      size: 9, font, color: rgb(0.5, 0.5, 0.5),
-    })
 
     y -= 4
 

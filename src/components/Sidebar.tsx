@@ -14,6 +14,7 @@ const navItems = [
   { href: '/responses', label: 'Responses' },
   { href: '/reports', label: 'Reports' },
   { href: '/remedy', label: 'Remedy' },
+  { href: '/remedy-log', label: 'Remedy Log' },
 ]
 
 export default function Sidebar({ email, role }: { email: string; role: Role }) {
