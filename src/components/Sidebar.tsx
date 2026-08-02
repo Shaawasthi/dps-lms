@@ -35,9 +35,7 @@ export default function Sidebar({ email, role }: { email: string; role: Role }) 
       <nav className="flex-1 px-3 py-4 space-y-0.5">
         {navItems.map((item) => {
           const active =
-            item.href === '/dashboard'
-              ? pathname === '/dashboard'
-              : pathname.startsWith(item.href)
+            pathname === item.href || pathname.startsWith(item.href + '/')
           return (
             <Link
               key={item.href}
