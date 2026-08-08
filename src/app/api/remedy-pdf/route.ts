@@ -15,6 +15,8 @@ type Question = {
   option_4_tag: string | null
   correct_answer: string
   level: string
+  difficulty: string | null
+  question_type: string | null
   hint: string | null
 }
 
@@ -33,8 +35,47 @@ type QuestionMeta = {
   option_4_tag: string | null
 }
 
-const LEVELS = ['Theory', 'Understanding', 'Application'] as const
-type Level = (typeof LEVELS)[number]
+// ── Bloom's taxonomy grouping ────────────────────────────────────────────────
+//
+// Lower  = Understand (and legacy Theory)
+// Middle = Apply, Analyze (and legacy Understanding)
+// Higher = Evaluate, Create (and legacy Application)
+//
+const BLOOM_GROUPS = ['Lower', 'Middle', 'Higher'] as const
+type BloomGroup = (typeof BLOOM_GROUPS)[number]
+
+function getBloomGroup(level: string): BloomGroup {
+  if (level === 'Understand' || level === 'Theory') return 'Lower'
+  if (level === 'Apply' || level === 'Analyze' || level === 'Understanding') return 'Middle'
+  return 'Higher' // Evaluate, Create, Application
+}
+
+// ── Distribution table (20 questions total by Bloom's group) ─────────────────
+//
+// miscCount │ Lower │ Middle │ Higher │ Bloom's groups
+// ──────────┼───────┼────────┼────────┼──────────────────────────────────────
+//     0     │   0   │   6    │   14   │ Understand / Apply+Analyze / Eval+Create
+//     1     │   6   │   4    │   10   │
+//     2     │   6   │   6    │    8   │
+//    3+     │  10   │   6    │    4   │
+//
+// Within each group: 40% Easy / 30% Medium / 30% Hard (best-effort, with fallback)
+//
+function getGroupDistribution(miscCount: number): Record<BloomGroup, number> {
+  if (miscCount === 0) return { Lower: 0, Middle: 6, Higher: 14 }
+  if (miscCount === 1) return { Lower: 6, Middle: 4, Higher: 10 }
+  if (miscCount === 2) return { Lower: 6, Middle: 6, Higher: 8 }
+  return { Lower: 10, Middle: 6, Higher: 4 }
+}
+
+const DIFFICULTIES = ['Easy', 'Medium', 'Hard'] as const
+type Difficulty = (typeof DIFFICULTIES)[number]
+
+function getDiffTargets(n: number): Record<Difficulty, number> {
+  const easy = Math.round(n * 0.4)
+  const hard = Math.round(n * 0.3)
+  return { Easy: easy, Medium: n - easy - hard, Hard: hard }
+}
 
 // ── Misconception helpers ────────────────────────────────────────────────────
 
@@ -75,22 +116,6 @@ function dominantCode(responses: ResponseRow[], qMeta: QuestionMeta[]): string |
   return Array.from(tally.entries()).sort((a, b) => b[1] - a[1])[0][0]
 }
 
-// ── Distribution table (20 questions total) ──────────────────────────────────
-//
-// miscCount │ Theory │ Understanding │ Application │ Source
-// ──────────┼────────┼──────────────┼─────────────┼───────────────────────────
-//     0     │   0    │      6       │     14      │ All session codes
-//     1     │   6    │      4       │     10      │ 75 % dominant, 25 % others
-//     2     │   6    │      6       │      8      │ All identified codes
-//    3+     │  10    │      6       │      4      │ All identified codes
-//
-function getDistribution(miscCount: number): Record<Level, number> {
-  if (miscCount === 0) return { Theory: 0, Understanding: 6, Application: 14 }
-  if (miscCount === 1) return { Theory: 6, Understanding: 4, Application: 10 }
-  if (miscCount === 2) return { Theory: 6, Understanding: 6, Application: 8 }
-  return { Theory: 10, Understanding: 6, Application: 4 }
-}
-
 function hasAnyTag(q: Question, codes: Set<string>): boolean {
   return [q.option_1_tag, q.option_2_tag, q.option_3_tag, q.option_4_tag].some(
     (t) => t !== null && codes.has(t)
@@ -128,10 +153,14 @@ export async function POST(request: NextRequest) {
       .eq('is_remedy', false),
   ])
 
-  // Remedy pool across all covered sessions
+  // Remedy pool across all covered sessions (with new fields)
   const { data: remedyRaw } = await (supabase
     .from('questions')
-    .select('question_uid, question_text, option_1, option_2, option_3, option_4, option_1_tag, option_2_tag, option_3_tag, option_4_tag, correct_answer, level, hint')
+    .select(
+      'question_uid, question_text, option_1, option_2, option_3, option_4, ' +
+      'option_1_tag, option_2_tag, option_3_tag, option_4_tag, ' +
+      'correct_answer, level, difficulty, question_type, hint'
+    )
     .in('curriculum_id', curriculum_ids)
     .eq('is_remedy', true) as unknown as Promise<{ data: Question[] | null }>)
 
@@ -153,7 +182,7 @@ export async function POST(request: NextRequest) {
   const studentCodes = getMisconceptions(responses, diagMeta)
   const topCode = dominantCode(responses, diagMeta)
   const miscCount = studentCodes.size
-  const distribution = getDistribution(miscCount)
+  const groupDist = getGroupDistribution(miscCount)
 
   const sessionCodes = new Set<string>()
   for (const q of remedyPool) {
@@ -175,21 +204,24 @@ export async function POST(request: NextRequest) {
     topDesc = mc?.description ?? null
   }
 
-  // ── Build question list level-by-level ───────────────────────────────────
+  // ── Build question list ──────────────────────────────────────────────────
   //
-  // Three-tier priority per level slot:
-  //   1. Student's own misconception codes
-  //   2. Other session codes  (fallback)
-  //   3. Any remedy question  (last resort)
+  // Primary:   Bloom's group distribution (Lower / Middle / Higher)
+  // Secondary: 40% Easy / 30% Medium / 30% Hard within each group
+  //
+  // Three-tier misconception priority at each step:
+  //   P1 → student's own codes
+  //   P2 → other session codes
+  //   P3 → any remedy question in that pool
   //
   const selected: Question[] = []
   const usedUids = new Set<string>()
 
-  function take(pool: Question[], level: string, n: number): Question[] {
+  function take(pool: Question[], n: number): Question[] {
     const picked: Question[] = []
     for (const q of pool) {
       if (picked.length >= n) break
-      if (q.level === level && !usedUids.has(q.question_uid)) {
+      if (!usedUids.has(q.question_uid)) {
         picked.push(q)
         usedUids.add(q.question_uid)
       }
@@ -197,28 +229,53 @@ export async function POST(request: NextRequest) {
     return picked
   }
 
-  for (const level of LEVELS) {
-    let remaining = distribution[level]
-    if (remaining === 0) continue
+  function selectPriority(pool: Question[], n: number): Question[] {
+    let rem = n
+    const out: Question[] = []
 
-    if (studentCodes.size > 0) {
-      const p1 = remedyPool.filter((q) => hasAnyTag(q, studentCodes))
-      const taken = take(p1, level, remaining)
+    if (rem > 0 && studentCodes.size > 0) {
+      const taken = take(pool.filter((q) => hasAnyTag(q, studentCodes)), rem)
+      out.push(...taken); rem -= taken.length
+    }
+    if (rem > 0 && otherSessionCodes.size > 0) {
+      const taken = take(pool.filter((q) => hasAnyTag(q, otherSessionCodes)), rem)
+      out.push(...taken); rem -= taken.length
+    }
+    if (rem > 0) {
+      const taken = take(pool, rem)
+      out.push(...taken)
+    }
+    return out
+  }
+
+  for (const group of BLOOM_GROUPS) {
+    let groupRem = groupDist[group]
+    if (groupRem === 0) continue
+
+    const groupPool = remedyPool.filter((q) => getBloomGroup(q.level) === group)
+    const diffTargets = getDiffTargets(groupRem)
+
+    // Phase 1: difficulty-aware selection (40 / 30 / 30 split)
+    for (const diff of DIFFICULTIES) {
+      if (diffTargets[diff] === 0) continue
+      const diffPool = groupPool.filter((q) => q.difficulty === diff)
+      const taken = selectPriority(diffPool, diffTargets[diff])
       selected.push(...taken)
-      remaining -= taken.length
+      groupRem -= taken.length
     }
 
-    if (remaining > 0 && otherSessionCodes.size > 0) {
-      const p2 = remedyPool.filter((q) => hasAnyTag(q, otherSessionCodes))
-      const taken = take(p2, level, remaining)
+    // Phase 2: group fallback — any difficulty remaining in group
+    if (groupRem > 0) {
+      const taken = selectPriority(groupPool, groupRem)
       selected.push(...taken)
-      remaining -= taken.length
     }
+  }
 
-    if (remaining > 0) {
-      const taken = take(remedyPool, level, remaining)
-      selected.push(...taken)
-    }
+  // Global fallback: fill any remaining slots from full pool
+  const globalRem = 20 - selected.length
+  if (globalRem > 0) {
+    const taken = selectPriority(remedyPool, globalRem)
+    selected.push(...taken)
   }
 
   if (selected.length === 0) {
@@ -228,10 +285,10 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // ── Log this generation (fire-and-forget, does not block PDF) ────────────
-  const theoryCnt = selected.filter((q) => q.level === 'Theory').length
-  const understandingCnt = selected.filter((q) => q.level === 'Understanding').length
-  const applicationCnt = selected.filter((q) => q.level === 'Application').length
+  // ── Log this generation (fire-and-forget) ────────────────────────────────
+  const theoryCnt = selected.filter((q) => getBloomGroup(q.level) === 'Lower').length
+  const understandingCnt = selected.filter((q) => getBloomGroup(q.level) === 'Middle').length
+  const applicationCnt = selected.filter((q) => getBloomGroup(q.level) === 'Higher').length
 
   const firstCurric = (curricArr ?? [])[0]
   const sessionNames = (curricArr ?? []).map((c) => c.learning_goal).join(', ')
@@ -352,18 +409,36 @@ export async function POST(request: NextRequest) {
       { label: 'D', text: q.option_4 },
     ].filter((o) => o.text)
 
-    for (const opt of opts) {
-      const lines = wrapText(`${opt.label}) ${opt.text}`, CONTENT_WIDTH - 16, 10)
-      ensureSpace(lines.length * 14 + 4)
-      for (const line of lines) {
-        page.drawText(line, { x: MARGIN + 16, y, size: 10, font, color: rgb(0.2, 0.2, 0.2) })
-        y -= 13
+    if (opts.length > 0) {
+      // MCQ / Assertion-Reason: show lettered options
+      for (const opt of opts) {
+        const lines = wrapText(`${opt.label}) ${opt.text}`, CONTENT_WIDTH - 16, 10)
+        ensureSpace(lines.length * 14 + 4)
+        for (const line of lines) {
+          page.drawText(line, { x: MARGIN + 16, y, size: 10, font, color: rgb(0.2, 0.2, 0.2) })
+          y -= 13
+        }
+      }
+    } else {
+      // Short Answer / Long Answer: draw blank writing lines
+      const lineCount = q.question_type === 'Long Answer' ? 8 : 4
+      for (let li = 0; li < lineCount; li++) {
+        ensureSpace(24)
+        page.drawLine({
+          start: { x: MARGIN + 16, y: y - 4 },
+          end: { x: PAGE_WIDTH - MARGIN, y: y - 4 },
+          thickness: 0.4,
+          color: rgb(0.75, 0.75, 0.75),
+        })
+        y -= 22
       }
     }
 
     if (q.hint) {
       y -= 4
-      const hintLines = wrapText(`Hint: ${q.hint}`, CONTENT_WIDTH - 16, 9)
+      const isOpenEnded = opts.length === 0
+      const hintPrefix = isOpenEnded ? 'Model answer: ' : 'Hint: '
+      const hintLines = wrapText(hintPrefix + q.hint, CONTENT_WIDTH - 16, 9)
       ensureSpace(hintLines.length * 12 + 6)
       for (const line of hintLines) {
         page.drawText(line, { x: MARGIN + 16, y, size: 9, font, color: rgb(0.3, 0.5, 0.3) })

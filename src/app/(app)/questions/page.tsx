@@ -28,6 +28,8 @@ type QuestionDetail = {
   option_4_tag: string | null
   correct_answer: string
   level: string | null
+  difficulty: string | null
+  question_type: string | null
   hint: string | null
   is_remedy: boolean
   curriculum_id: string | null
@@ -35,7 +37,13 @@ type QuestionDetail = {
 
 type QType = 'diagnostic' | 'remedy'
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const
-const LEVELS = ['Theory', 'Understanding', 'Application']
+// Legacy levels for diagnostic questions
+const DIAG_LEVELS = ['Theory', 'Understanding', 'Application']
+// Bloom's taxonomy levels for remedy questions
+const BLOOM_LEVELS = ['Understand', 'Apply', 'Analyze', 'Evaluate', 'Create']
+const ALL_LEVELS = [...DIAG_LEVELS, ...BLOOM_LEVELS]
+const DIFFICULTIES = ['Easy', 'Medium', 'Hard']
+const QUESTION_TYPES = ['MCQ', 'Assertion-Reason', 'Short Answer', 'Long Answer']
 const optionKeys = [
   ['option_1', 'option_1_tag'],
   ['option_2', 'option_2_tag'],
@@ -160,6 +168,8 @@ export default function QuestionsPage() {
       option_3: editForm.option_3 || null, option_3_tag: editForm.option_3_tag || null,
       option_4: editForm.option_4 || null, option_4_tag: editForm.option_4_tag || null,
       correct_answer: editForm.correct_answer, level: editForm.level,
+      difficulty: editForm.difficulty || null,
+      question_type: editForm.question_type || null,
       hint: editForm.hint || null, is_remedy: editForm.is_remedy,
     }).eq('question_uid', editForm.question_uid)
     setSaving(false)
@@ -227,6 +237,8 @@ export default function QuestionsPage() {
           option_3: r.option_3 || null, option_3_tag: r.option_3_tag || null,
           option_4: r.option_4 || null, option_4_tag: r.option_4_tag || null,
           correct_answer: r.correct_answer, level: r.level || null,
+          difficulty: r.difficulty || null,
+          question_type: r.question_type || null,
           hint: r.hint || null, image_url: r.image_url || null,
           is_remedy: r.is_remedy === 'true' || r.is_remedy === '1',
         }))
@@ -266,13 +278,14 @@ export default function QuestionsPage() {
         <section className="bg-white border border-gray-200 rounded-lg p-5">
           <div className="flex items-center justify-between gap-3 mb-1">
             <p className="text-xs text-gray-500">
-              Columns: <span className="font-mono">question_uid, grade, subject, unit, learning_goal, question_text, option_1, option_1_tag, option_2, option_2_tag, option_3, option_3_tag, option_4, option_4_tag, correct_answer, level, hint, is_remedy</span>
+              Columns: <span className="font-mono">question_uid, grade, subject, unit, learning_goal, question_text, option_1, option_1_tag, option_2, option_2_tag, option_3, option_3_tag, option_4, option_4_tag, correct_answer, level, hint, is_remedy, difficulty, question_type</span>
+              <span className="ml-2 text-gray-400">· level: Theory/Understanding/Application (diagnostic) or Understand/Apply/Analyze/Evaluate/Create (remedy) · difficulty: Easy/Medium/Hard · question_type: MCQ/Assertion-Reason/Short Answer/Long Answer</span>
             </p>
             <button type="button"
               onClick={() => downloadSampleCsv(
                 'sample-questions.csv',
-                ['question_uid','grade','subject','unit','learning_goal','question_text','option_1','option_1_tag','option_2','option_2_tag','option_3','option_3_tag','option_4','option_4_tag','correct_answer','level','hint','is_remedy'],
-                ['G7Ch1S1Q1','7','Science','Chapter 1 Session 1: The Web of Science','Students will identify the steps of the scientific method','What is the first step of the scientific method?','Make an observation','G7C1.1','Form a hypothesis','G7C1.2','Conduct an experiment','','Draw a conclusion','','A','Theory','Science starts with noticing things around us','false']
+                ['question_uid','grade','subject','unit','learning_goal','question_text','option_1','option_1_tag','option_2','option_2_tag','option_3','option_3_tag','option_4','option_4_tag','correct_answer','level','hint','is_remedy','difficulty','question_type'],
+                ['G7C10.1R01','7','Science','Chapter 10','Photosynthesis: Requirements','Two identical seedlings are watered daily. One on a bright windowsill, one in a closed cupboard. Which grows better, and why?','The cupboard seedling — darkness lets it rest','G7C10.1','The windowsill seedling — light is required to make food','','The windowsill seedling — window air is warmer','','Both equally — soil and water supply all energy','','B','Understand','','true','Easy','MCQ']
               )}
               className="text-xs text-blue-600 hover:text-blue-800 underline underline-offset-2 whitespace-nowrap flex-shrink-0">
               Download sample
@@ -350,7 +363,12 @@ export default function QuestionsPage() {
             <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}
               className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
               <option value="">All levels</option>
-              {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+              <optgroup label="Bloom's taxonomy (remedy)">
+                {BLOOM_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </optgroup>
+              <optgroup label="Legacy (diagnostic)">
+                {DIAG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </optgroup>
             </select>
           </div>
 
@@ -430,18 +448,41 @@ export default function QuestionsPage() {
                   <p className="text-xs text-gray-600">{curriculumLabel}</p>
                 </div>
 
-                <div className="flex gap-4 items-center">
+                <div className="flex flex-wrap gap-4 items-start">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Level</label>
                     <select value={editForm.level ?? ''} onChange={(e) => setField('level', e.target.value || null)}
                       disabled={!isAdmin}
                       className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
                       <option value="">—</option>
-                      {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                      <optgroup label="Bloom's (remedy)">
+                        {BLOOM_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                      </optgroup>
+                      <optgroup label="Legacy (diagnostic)">
+                        {DIAG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                      </optgroup>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Difficulty</label>
+                    <select value={editForm.difficulty ?? ''} onChange={(e) => setField('difficulty', e.target.value || null)}
+                      disabled={!isAdmin}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
+                      <option value="">—</option>
+                      {DIFFICULTIES.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Question Type</label>
+                    <select value={editForm.question_type ?? ''} onChange={(e) => setField('question_type', e.target.value || null)}
+                      disabled={!isAdmin}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
+                      <option value="">—</option>
+                      {QUESTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   {isAdmin && (
-                    <div className="flex items-center gap-2 mt-4">
+                    <div className="flex items-center gap-2 mt-5">
                       <input type="checkbox" id="is_remedy" checked={editForm.is_remedy}
                         onChange={(e) => setField('is_remedy', e.target.checked)} className="w-4 h-4" />
                       <label htmlFor="is_remedy" className="text-sm text-gray-700">Remedy question</label>

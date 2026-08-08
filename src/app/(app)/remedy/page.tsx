@@ -12,11 +12,13 @@ type SessionScore = { session: CurriculumEntry; levels: LevelScore[] }
 const ALL_STUDENTS = '__all__'
 const LEVELS = ['Theory', 'Understanding', 'Application'] as const
 
+// L = Lower (Understand)  M = Middle (Apply/Analyze)  H = Higher (Evaluate/Create)
+// Difficulty split within each group: 40% Easy · 30% Medium · 30% Hard
 function distributionLabel(miscCount: number) {
-  if (miscCount === 0) return '0T / 6U / 14A'
-  if (miscCount === 1) return '6T / 4U / 10A'
-  if (miscCount === 2) return '6T / 6U / 8A'
-  return '10T / 6U / 4A'
+  if (miscCount === 0) return '0L / 6M / 14H'
+  if (miscCount === 1) return '6L / 4M / 10H'
+  if (miscCount === 2) return '6L / 6M / 8H'
+  return '10L / 6M / 4H'
 }
 
 export default function RemedyPage() {
@@ -316,9 +318,15 @@ export default function RemedyPage() {
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
             <h2 className="text-sm font-medium">Score Breakdown</h2>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-gray-500 text-right">
               {detectedCodes.length} misconception{detectedCodes.length !== 1 ? 's' : ''} →{' '}
-              <span className="font-mono font-medium">{distributionLabel(detectedCodes.length)}</span>
+              <span
+                className="font-mono font-medium"
+                title="L: Understand · M: Apply/Analyze · H: Evaluate/Create"
+              >
+                {distributionLabel(detectedCodes.length)}
+              </span>
+              <span className="text-gray-400 ml-1">· 40/30/30 difficulty</span>
             </span>
           </div>
 
