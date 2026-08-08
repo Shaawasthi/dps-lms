@@ -108,27 +108,31 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { student_id, curriculum_id } = body as {
+  const { student_id, curriculum_ids } = body as {
     student_id: string
-    curriculum_id: string
+    curriculum_ids: string[]
+  }
+
+  if (!curriculum_ids?.length) {
+    return NextResponse.json({ error: 'No sessions provided.' }, { status: 400 })
   }
 
   // ── Fetch base data ──────────────────────────────────────────────────────
-  const [{ data: student }, { data: curric }, { data: diagMetaRaw }] = await Promise.all([
+  const [{ data: student }, { data: curricArr }, { data: diagMetaRaw }] = await Promise.all([
     supabase.from('students').select('name, student_id').eq('student_id', student_id).single(),
-    supabase.from('curriculum').select('unit, learning_goal').eq('id', curriculum_id).single(),
+    supabase.from('curriculum').select('id, unit, learning_goal').in('id', curriculum_ids),
     supabase
       .from('questions')
       .select('question_uid, level, option_1_tag, option_2_tag, option_3_tag, option_4_tag')
-      .eq('curriculum_id', curriculum_id)
+      .in('curriculum_id', curriculum_ids)
       .eq('is_remedy', false),
   ])
 
-  // Remedy pool — separate query with explicit cast to avoid TS GenericStringError
+  // Remedy pool across all covered sessions
   const { data: remedyRaw } = await (supabase
     .from('questions')
     .select('question_uid, question_text, option_1, option_2, option_3, option_4, option_1_tag, option_2_tag, option_3_tag, option_4_tag, correct_answer, level, hint')
-    .eq('curriculum_id', curriculum_id)
+    .in('curriculum_id', curriculum_ids)
     .eq('is_remedy', true) as unknown as Promise<{ data: Question[] | null }>)
 
   const diagMeta: QuestionMeta[] = diagMetaRaw ?? []
@@ -229,14 +233,17 @@ export async function POST(request: NextRequest) {
   const understandingCnt = selected.filter((q) => q.level === 'Understanding').length
   const applicationCnt = selected.filter((q) => q.level === 'Application').length
 
+  const firstCurric = (curricArr ?? [])[0]
+  const sessionNames = (curricArr ?? []).map((c) => c.learning_goal).join(', ')
+
   supabase
     .from('remedy_logs')
     .insert({
       student_id,
       student_name: student?.name ?? student_id,
-      curriculum_id,
-      unit: curric?.unit ?? '',
-      session_name: curric?.learning_goal ?? '',
+      curriculum_id: firstCurric?.id ?? curriculum_ids[0],
+      unit: firstCurric?.unit ?? '',
+      session_name: sessionNames,
       misconception_count: miscCount,
       theory_count: theoryCnt,
       understanding_count: understandingCnt,
@@ -300,9 +307,11 @@ export async function POST(request: NextRequest) {
       ? `Misconception: ${topCode}${topDesc ? ` — ${topDesc}` : ''}`
       : `Misconceptions identified: ${Array.from(studentCodes).join(', ')}`
 
+  const sessionsLine = (curricArr ?? []).map((c) => c.learning_goal).join(' · ')
+
   const headerLines = [
     `Student: ${student?.name ?? student_id}`,
-    `Session: ${curric?.unit ?? ''} — ${curric?.learning_goal ?? ''}`,
+    `Sessions: ${sessionsLine}`,
     tierLabel,
     `Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`,
   ]
