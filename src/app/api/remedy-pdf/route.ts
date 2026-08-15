@@ -116,7 +116,15 @@ function dominantCode(responses: ResponseRow[], qMeta: QuestionMeta[]): string |
   return Array.from(tally.entries()).sort((a, b) => b[1] - a[1])[0][0]
 }
 
+// For remedy questions the misconception code is encoded in the UID: G7C10.1R01 → G7C10.1
+function remedyMisconceptionCode(uid: string): string | null {
+  const m = uid.match(/^(G\d+C\d+\.\d+)R\d+$/i)
+  return m ? m[1] : null
+}
+
 function hasAnyTag(q: Question, codes: Set<string>): boolean {
+  const fromUid = remedyMisconceptionCode(q.question_uid)
+  if (fromUid) return codes.has(fromUid)
   return [q.option_1_tag, q.option_2_tag, q.option_3_tag, q.option_4_tag].some(
     (t) => t !== null && codes.has(t)
   )
