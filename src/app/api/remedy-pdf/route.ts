@@ -398,8 +398,14 @@ export async function POST(request: NextRequest) {
   })
   y -= 16
 
+  // Sort: MCQ and Assertion-Reason first, then Short Answer / Long Answer
+  const sortedSelected = [
+    ...selected.filter((q) => q.question_type === 'MCQ' || q.question_type === 'Assertion-Reason'),
+    ...selected.filter((q) => q.question_type !== 'MCQ' && q.question_type !== 'Assertion-Reason'),
+  ]
+
   // Questions
-  selected.forEach((q, i) => {
+  sortedSelected.forEach((q, i) => {
     const qLines = wrapText(`Q${i + 1}. ${q.question_text}`, CONTENT_WIDTH, 11)
     ensureSpace(qLines.length * 16 + 80)
 
@@ -442,21 +448,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (q.hint) {
-      y -= 4
-      const isOpenEnded = opts.length === 0
-      const hintPrefix = isOpenEnded ? 'Model answer: ' : 'Hint: '
-      const hintLines = wrapText(hintPrefix + q.hint, CONTENT_WIDTH - 16, 9)
-      ensureSpace(hintLines.length * 12 + 6)
-      for (const line of hintLines) {
-        page.drawText(line, { x: MARGIN + 16, y, size: 9, font, color: rgb(0.3, 0.5, 0.3) })
-        y -= 12
-      }
-    }
-
     y -= 14
 
-    if (i < selected.length - 1) {
+    if (i < sortedSelected.length - 1) {
       page.drawLine({
         start: { x: MARGIN, y },
         end: { x: PAGE_WIDTH - MARGIN, y },
