@@ -240,7 +240,7 @@ export default function QuestionsPage() {
           difficulty: r.difficulty || null,
           question_type: r.question_type || null,
           hint: r.hint || null, image_url: r.image_url || null,
-          is_remedy: r.is_remedy === 'true' || r.is_remedy === '1',
+          is_remedy: r.is_remedy?.toLowerCase() === 'true' || r.is_remedy === '1',
         }))
         const missing = records.filter((r) => !r.curriculum_id)
         if (missing.length) {
