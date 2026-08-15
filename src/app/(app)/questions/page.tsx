@@ -243,7 +243,15 @@ export default function QuestionsPage() {
           is_remedy: r.is_remedy === 'true' || r.is_remedy === '1',
         }))
         const missing = records.filter((r) => !r.curriculum_id)
-        if (missing.length) { setUploadStatus(`Error: ${missing.length} row(s) have no matching session.`); return }
+        if (missing.length) {
+          const details = missing.slice(0, 5).map((r) => {
+            const raw = rows.find((row) => row.question_uid === r.question_uid)
+            return `${r.question_uid}: unit="${raw?.unit}" learning_goal="${raw?.learning_goal}"`
+          })
+          const more = missing.length > 5 ? ` … and ${missing.length - 5} more` : ''
+          setUploadStatus(`Error: ${missing.length} row(s) have no matching session.\n${details.join('\n')}${more}`)
+          return
+        }
         const { error } = await supabase.from('questions').upsert(records, { onConflict: 'question_uid' })
         if (error) { setUploadStatus('Error: ' + error.message); return }
         setUploadStatus(`Uploaded ${records.length} questions.`)
@@ -296,7 +304,7 @@ export default function QuestionsPage() {
             <button type="submit" className="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700">Upload</button>
           </form>
           {uploadStatus && (
-            <p className={`mt-2 text-sm ${uploadStatus.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>{uploadStatus}</p>
+            <pre className={`mt-2 text-xs whitespace-pre-wrap font-mono ${uploadStatus.startsWith('Error') ? 'text-red-600' : 'text-green-700'}`}>{uploadStatus}</pre>
           )}
         </section>
       )}
