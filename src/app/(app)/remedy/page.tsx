@@ -216,7 +216,8 @@ export default function RemedyPage() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `remedy-${sid}.pdf`
+        const studentName = students.find((s) => s.student_id === sid)?.name ?? sid
+        a.download = `remedy-${studentName}-${sid}.pdf`
         a.click()
         URL.revokeObjectURL(url)
 

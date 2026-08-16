@@ -457,7 +457,7 @@ export async function POST(request: NextRequest) {
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="remedy-${student_id}.pdf"`,
+      'Content-Disposition': `attachment; filename="remedy-${student?.name ?? student_id}-${student_id}.pdf"`,
     },
   })
 }
