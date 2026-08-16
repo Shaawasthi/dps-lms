@@ -498,14 +498,16 @@ export default function QuestionsPage() {
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Correct Answer</label>
-                  <select value={editForm.correct_answer} onChange={(e) => setField('correct_answer', e.target.value)}
-                    disabled={!isAdmin}
-                    className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
-                    {OPTION_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                </div>
+                {editForm.question_type !== 'Short Answer' && editForm.question_type !== 'Long Answer' && (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Correct Answer</label>
+                    <select value={editForm.correct_answer} onChange={(e) => setField('correct_answer', e.target.value)}
+                      disabled={!isAdmin}
+                      className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
+                      {OPTION_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Question Text</label>
@@ -514,27 +516,31 @@ export default function QuestionsPage() {
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-y read-only:bg-gray-50" />
                 </div>
 
-                <div>
-                  <p className="text-xs text-gray-500 mb-2">Options <span className="text-gray-400">(text · misconception tag)</span></p>
-                  <div className="space-y-2">
-                    {optionKeys.map(([optKey, tagKey], i) => (
-                      <div key={optKey} className="flex gap-2 items-center">
-                        <span className={`w-6 h-6 flex-shrink-0 flex items-center justify-center rounded text-xs font-bold ${
-                          editForm.correct_answer === OPTION_LABELS[i] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                        }`}>{OPTION_LABELS[i]}</span>
-                        <input value={editForm[optKey] ?? ''} onChange={(e) => setField(optKey, e.target.value || null)}
-                          readOnly={!isAdmin} placeholder={`Option ${OPTION_LABELS[i]}`}
-                          className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm read-only:bg-gray-50" />
-                        <input value={editForm[tagKey] ?? ''} onChange={(e) => setField(tagKey, e.target.value || null)}
-                          readOnly={!isAdmin} placeholder="tag"
-                          className="w-24 border border-gray-300 rounded px-2 py-1.5 text-xs font-mono read-only:bg-gray-50" />
-                      </div>
-                    ))}
+                {editForm.question_type !== 'Short Answer' && editForm.question_type !== 'Long Answer' && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">Options <span className="text-gray-400">(text · misconception tag)</span></p>
+                    <div className="space-y-2">
+                      {optionKeys.map(([optKey, tagKey], i) => (
+                        <div key={optKey} className="flex gap-2 items-center">
+                          <span className={`w-6 h-6 flex-shrink-0 flex items-center justify-center rounded text-xs font-bold ${
+                            editForm.correct_answer === OPTION_LABELS[i] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                          }`}>{OPTION_LABELS[i]}</span>
+                          <input value={editForm[optKey] ?? ''} onChange={(e) => setField(optKey, e.target.value || null)}
+                            readOnly={!isAdmin} placeholder={`Option ${OPTION_LABELS[i]}`}
+                            className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm read-only:bg-gray-50" />
+                          <input value={editForm[tagKey] ?? ''} onChange={(e) => setField(tagKey, e.target.value || null)}
+                            readOnly={!isAdmin} placeholder="tag"
+                            className="w-24 border border-gray-300 rounded px-2 py-1.5 text-xs font-mono read-only:bg-gray-50" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Hint</label>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {editForm.question_type === 'Short Answer' || editForm.question_type === 'Long Answer' ? 'Model Answer' : 'Hint'}
+                  </label>
                   <textarea value={editForm.hint ?? ''} onChange={(e) => setField('hint', e.target.value || null)}
                     rows={2} readOnly={!isAdmin}
                     className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-y read-only:bg-gray-50" />

@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
       total_questions: selected.length,
       generated_by: user.id,
     })
-    .then()
+    .then(({ error }) => { if (error) console.error('remedy_log insert failed:', error.message) })
 
   // ── PDF generation ───────────────────────────────────────────────────────
   const pdf = await PDFDocument.create()
@@ -365,19 +365,11 @@ export async function POST(request: NextRequest) {
   })
   y -= 26
 
-  const tierLabel =
-    miscCount === 0
-      ? 'Misconceptions: None identified — general challenge questions'
-      : miscCount === 1
-      ? `Misconception: ${topCode}${topDesc ? ` — ${topDesc}` : ''}`
-      : `Misconceptions identified: ${Array.from(studentCodes).join(', ')}`
-
   const sessionsLine = (curricArr ?? []).map((c) => c.learning_goal).join(' · ')
 
   const headerLines = [
     `Student: ${student?.name ?? student_id}`,
     `Sessions: ${sessionsLine}`,
-    tierLabel,
     `Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`,
   ]
 

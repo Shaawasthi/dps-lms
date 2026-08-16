@@ -83,6 +83,7 @@ export default function ReportsPage() {
       .from('questions')
       .select('question_uid, curriculum_id, level')
       .in('curriculum_id', curricIds)
+      .eq('is_remedy', false)
 
     const studentIds = (studs ?? []).map((s) => s.student_id)
     const questionUids = (qMeta ?? []).map((q) => q.question_uid)
@@ -225,10 +226,10 @@ export default function ReportsPage() {
                   LEVELS.map((l) => (
                     <th
                       key={`${c.id}-${l}`}
-                      className="border border-gray-200 px-2 py-1 font-medium text-gray-500 max-w-[60px] whitespace-nowrap overflow-hidden"
+                      className="border border-gray-200 px-2 py-1 font-medium text-gray-500 max-w-[80px] whitespace-nowrap overflow-hidden"
                       title={`${c.learning_goal} · ${l}`}
                     >
-                      {c.unit.slice(0, 8)}…{l[0]}
+                      {c.learning_goal.slice(0, 10)}… {l[0]}
                     </th>
                   ))
                 )}

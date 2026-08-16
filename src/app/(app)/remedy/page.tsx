@@ -322,11 +322,10 @@ export default function RemedyPage() {
               {detectedCodes.length} misconception{detectedCodes.length !== 1 ? 's' : ''} →{' '}
               <span
                 className="font-mono font-medium"
-                title="L: Understand · M: Apply/Analyze · H: Evaluate/Create"
+                title="L: Understand · M: Apply/Analyze · H: Evaluate/Create · difficulty: 40% Easy / 30% Medium / 30% Hard"
               >
                 {distributionLabel(detectedCodes.length)}
               </span>
-              <span className="text-gray-400 ml-1">· 40/30/30 difficulty</span>
             </span>
           </div>
 
