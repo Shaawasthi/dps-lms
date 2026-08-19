@@ -287,8 +287,11 @@ export default function QuestionsPage() {
         <section className="bg-white border border-gray-200 rounded-lg p-5">
           <div className="flex items-center justify-between gap-3 mb-1">
             <p className="text-xs text-gray-500">
-              Columns: <span className="font-mono">question_uid, grade, subject, unit, learning_goal, question_text, option_1, option_1_tag, option_2, option_2_tag, option_3, option_3_tag, option_4, option_4_tag, correct_answer, level, hint, is_remedy, difficulty, question_type</span>
-              <span className="ml-2 text-gray-400">· level: Theory/Understanding/Application (diagnostic) or Understand/Apply/Analyze/Evaluate/Create (remedy) · difficulty: Easy/Medium/Hard · question_type: MCQ/Assertion-Reason/Short Answer/Long Answer</span>
+              Diagnostic columns: <span className="font-mono">question_uid, grade, subject, unit, learning_goal, question_text, option_1, option_1_tag, option_2, option_2_tag, option_3, option_3_tag, option_4, option_4_tag, correct_answer, level, hint, is_remedy</span>
+              <span className="ml-2 text-gray-400">· level: Theory / Understanding / Application · is_remedy: false</span>
+              <br />
+              <span className="text-gray-400">Remedy also includes: </span><span className="font-mono">difficulty, question_type</span>
+              <span className="ml-2 text-gray-400">· level: Understand/Apply/Analyze/Evaluate/Create · difficulty: Easy/Medium/Hard · question_type: MCQ/Assertion-Reason/Short Answer/Long Answer · is_remedy: true</span>
             </p>
             <button type="button"
               onClick={() => downloadSampleCsv(
@@ -372,12 +375,10 @@ export default function QuestionsPage() {
             <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}
               className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
               <option value="">All levels</option>
-              <optgroup label="Bloom's taxonomy (remedy)">
-                {BLOOM_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-              </optgroup>
-              <optgroup label="Legacy (diagnostic)">
-                {DIAG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-              </optgroup>
+              {qType === 'remedy'
+                ? BLOOM_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)
+                : DIAG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)
+              }
             </select>
           </div>
 
@@ -481,14 +482,13 @@ export default function QuestionsPage() {
                       disabled={!isAdmin}
                       className="border border-gray-300 rounded px-2 py-1.5 text-sm disabled:bg-gray-50">
                       <option value="">—</option>
-                      <optgroup label="Bloom's (remedy)">
-                        {BLOOM_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-                      </optgroup>
-                      <optgroup label="Legacy (diagnostic)">
-                        {DIAG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-                      </optgroup>
+                      {editForm.is_remedy
+                        ? BLOOM_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)
+                        : DIAG_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)
+                      }
                     </select>
                   </div>
+                  {editForm.is_remedy && (
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Difficulty</label>
                     <select value={editForm.difficulty ?? ''} onChange={(e) => setField('difficulty', e.target.value || null)}
@@ -498,6 +498,8 @@ export default function QuestionsPage() {
                       {DIFFICULTIES.map((d) => <option key={d} value={d}>{d}</option>)}
                     </select>
                   </div>
+                  )}
+                  {editForm.is_remedy && (
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Question Type</label>
                     <select value={editForm.question_type ?? ''} onChange={(e) => setField('question_type', e.target.value || null)}
@@ -507,6 +509,7 @@ export default function QuestionsPage() {
                       {QUESTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
+                  )}
                   {isAdmin && (
                     <div className="flex items-center gap-2 mt-5">
                       <input type="checkbox" id="is_remedy" checked={editForm.is_remedy}
