@@ -64,6 +64,7 @@ export default function QuestionsPage() {
   const [filterClass, setFilterClass] = useState('')
   const [filterUnit, setFilterUnit] = useState('')
   const [filterLevel, setFilterLevel] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Multi-select sessions
   const [selectedCurriculumIds, setSelectedCurriculumIds] = useState<string[]>([])
@@ -395,15 +396,32 @@ export default function QuestionsPage() {
               ))}
             </div>
 
+            <div className="px-3 py-2 border-b border-gray-100">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search questions…"
+                className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-400"
+              />
+            </div>
+
             <p className="px-3 py-2 text-xs text-gray-500 border-b border-gray-100">
-              {questions.length} question{questions.length !== 1 ? 's' : ''}
+              {(() => {
+                const q = searchQuery.trim().toLowerCase()
+                const count = q ? questions.filter(x => x.question_text.toLowerCase().includes(q) || x.question_uid.toLowerCase().includes(q)).length : questions.length
+                return `${count} question${count !== 1 ? 's' : ''}`
+              })()}
             </p>
 
             {questions.length === 0 ? (
               <p className="px-3 py-4 text-sm text-gray-400">No {qType} questions.</p>
             ) : (
               <ul className="divide-y divide-gray-100 max-h-[52vh] overflow-y-auto">
-                {questions.map((q) => (
+                {questions.filter((q) => {
+                  const s = searchQuery.trim().toLowerCase()
+                  return !s || q.question_text.toLowerCase().includes(s) || q.question_uid.toLowerCase().includes(s)
+                }).map((q) => (
                   <li key={q.question_uid}
                     onClick={() => handleSelectQuestion(q.question_uid)}
                     className={`px-3 py-2.5 cursor-pointer hover:bg-gray-50 ${
