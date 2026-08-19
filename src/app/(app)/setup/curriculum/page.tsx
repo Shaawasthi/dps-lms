@@ -173,9 +173,9 @@ export default function CurriculumPage() {
         if (mcRows.length > 0) {
           const mcRecords = mcRows.map((r) => ({
             code: r.misconception_code.trim(),
-            curriculum_id: idMap.get(`${r.grade}||${r.subject}||${r.unit}||${r.learning_goal}`),
+            curriculum_id: idMap.get(`${r.grade}||${r.subject}||${r.unit}||${r.learning_goal}`) ?? null,
             description: r.misconception_description,
-          })).filter((m) => m.curriculum_id)
+          }))
           const { error: me } = await supabase.from('misconceptions').upsert(mcRecords, { onConflict: 'code' })
           if (me) { setUploadStatus('Error upserting misconceptions: ' + me.message); return }
           setUploadStatus(`Uploaded ${curricEntries.length} session(s) and ${mcRecords.length} misconception(s).`)
