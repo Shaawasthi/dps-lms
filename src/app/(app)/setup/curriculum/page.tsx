@@ -154,11 +154,23 @@ export default function CurriculumPage() {
     Papa.parse(file, {
       header: true, skipEmptyLines: true,
       complete: async (result) => {
-        const rows = result.data as Array<Record<string, string>>
+        // Strip BOM from column headers (Excel saves UTF-8 CSVs with a BOM)
+        const rawRows = result.data as Array<Record<string, string>>
+        const rows = rawRows.map((row) => {
+          const clean: Record<string, string> = {}
+          for (const [k, v] of Object.entries(row)) clean[k.replace(/^﻿/, '')] = v
+          return clean
+        })
+
         const curriculumMap = new Map<string, { grade: string; subject: string; unit: string; learning_goal: string }>()
         for (const r of rows) {
-          const key = `${r.grade}||${r.subject}||${r.unit}||${r.learning_goal}`
-          if (!curriculumMap.has(key)) curriculumMap.set(key, { grade: r.grade, subject: r.subject, unit: r.unit, learning_goal: r.learning_goal })
+          // learning_goal may be semicolon-joined ("Session A ; Session B") — treat each as a separate session
+          const goals = (r.learning_goal ?? '').split(';').map((s) => s.trim()).filter(Boolean)
+          const effectiveGoals = goals.length ? goals : ['']
+          for (const goal of effectiveGoals) {
+            const key = `${r.grade}||${r.subject}||${r.unit}||${goal}`
+            if (!curriculumMap.has(key)) curriculumMap.set(key, { grade: r.grade, subject: r.subject, unit: r.unit, learning_goal: goal })
+          }
         }
         const curricEntries = Array.from(curriculumMap.values())
         const { error: ce } = await supabase.from('curriculum').upsert(curricEntries, { onConflict: 'grade,subject,unit,learning_goal', ignoreDuplicates: true })
@@ -171,11 +183,12 @@ export default function CurriculumPage() {
 
         const mcRows = rows.filter((r) => r.misconception_code?.trim())
         if (mcRows.length > 0) {
-          const mcRecords = mcRows.map((r) => ({
-            code: r.misconception_code.trim(),
-            curriculum_id: idMap.get(`${r.grade}||${r.subject}||${r.unit}||${r.learning_goal}`) ?? null,
-            description: r.misconception_description,
-          }))
+          // For semicolon-joined sessions, link misconception to the first matching session found
+          const mcRecords = mcRows.map((r) => {
+            const goals = (r.learning_goal ?? '').split(';').map((s) => s.trim()).filter(Boolean)
+            const curriculum_id = goals.map((g) => idMap.get(`${r.grade}||${r.subject}||${r.unit}||${g}`)).find(Boolean) ?? null
+            return { code: r.misconception_code.trim(), curriculum_id, description: r.misconception_description }
+          })
           const { error: me } = await supabase.from('misconceptions').upsert(mcRecords, { onConflict: 'code' })
           if (me) { setUploadStatus('Error upserting misconceptions: ' + me.message); return }
           setUploadStatus(`Uploaded ${curricEntries.length} session(s) and ${mcRecords.length} misconception(s).`)
