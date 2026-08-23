@@ -158,6 +158,7 @@ export default function CurriculumPage() {
         const rawRows = result.data as Array<Record<string, string>>
         const rows = rawRows.map((row) => {
           const clean: Record<string, string> = {}
+          // ﻿ is the UTF-8 BOM that Excel silently prepends to the first column header
           for (const [k, v] of Object.entries(row)) clean[k.replace(/^﻿/, '')] = v
           return clean
         })
