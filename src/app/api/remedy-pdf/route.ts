@@ -150,7 +150,9 @@ function sanitize(text: string): string {
     .replace(/[–—]/g, '-') // en/em dash
     .replace(/[‘’]/g, "'") // curly single quotes
     .replace(/[“”]/g, '"') // curly double quotes
-    .replace(/[^\x00-\xFF]/g, '?')  // anything else outside Latin-1
+    .replace(/[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]/g, ' ') // control chars (except \n \r)
+    .replace(/[\n\r]+/g, ' ')        // newlines -> space
+    .replace(/[^\x00-\xFF]/g, '?')   // anything else outside Latin-1
 }
 
 // ── Route ────────────────────────────────────────────────────────────────────
