@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
   const selected: Question[] = []
   const usedUids = new Set<string>()
 
-  function take(pool: Question[], n: number): Question[] {
+  const take = (pool: Question[], n: number): Question[] => {
     const picked: Question[] = []
     for (const q of pool) {
       if (picked.length >= n) break
@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
     return picked
   }
 
-  function selectPriority(pool: Question[], n: number): Question[] {
+  const selectPriority = (pool: Question[], n: number): Question[] => {
     let rem = n
     const out: Question[] = []
 
@@ -353,11 +353,9 @@ export async function POST(request: NextRequest) {
   const MARGIN = 50
   const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2
 
-  function addPage() {
-    return pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
-  }
+  const addPage = () => pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
 
-  function wrapText(text: string, maxWidth: number, size: number): string[] {
+  const wrapText = (text: string, maxWidth: number, size: number): string[] => {
     const words = text.split(' ')
     const lines: string[] = []
     let current = ''
@@ -377,7 +375,7 @@ export async function POST(request: NextRequest) {
   let page = addPage()
   let y = PAGE_HEIGHT - MARGIN
 
-  function ensureSpace(needed: number) {
+  const ensureSpace = (needed: number) => {
     if (y - needed < MARGIN) {
       page = addPage()
       y = PAGE_HEIGHT - MARGIN
