@@ -130,10 +130,35 @@ function hasAnyTag(q: Question, codes: Set<string>): boolean {
   )
 }
 
+// ── Character sanitizer (pdf-lib Helvetica is Latin-1 only) ─────────────────
+function sanitize(text: string): string {
+  return text
+    .replace(/[₀-₉]/g, (c) => String(c.codePointAt(0)! - 0x2080)) // subscript digits
+    .replace(/[⁰¹²³⁴-⁹]/g, (c) => {
+      const map: Record<string, string> = {
+        '⁰': '0', '¹': '1', '²': '2', '³': '3',
+        '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7',
+        '⁸': '8', '⁹': '9',
+      }
+      return map[c] ?? c
+    })
+    .replace(/→/g, '->') // →
+    .replace(/←/g, '<-') // ←
+    .replace(/°/g, ' deg') // °
+    .replace(/×/g, 'x')   // ×
+    .replace(/÷/g, '/')   // ÷
+    .replace(/[–—]/g, '-') // en/em dash
+    .replace(/[‘’]/g, "'") // curly single quotes
+    .replace(/[“”]/g, '"') // curly double quotes
+    .replace(/[^\x00-\xFF]/g, '?')  // anything else outside Latin-1
+}
+
 // ── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   const supabase = createClient()
+
+  try {
 
   const {
     data: { user },
@@ -365,10 +390,10 @@ export async function POST(request: NextRequest) {
   })
   y -= 26
 
-  const sessionsLine = (curricArr ?? []).map((c) => c.learning_goal).join(' · ')
+  const sessionsLine = (curricArr ?? []).map((c) => sanitize(c.learning_goal)).join(' · ')
 
   const headerLines = [
-    `Student: ${student?.name ?? student_id}`,
+    `Student: ${sanitize(student?.name ?? student_id)}`,
     `Sessions: ${sessionsLine}`,
     `Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`,
   ]
@@ -398,7 +423,7 @@ export async function POST(request: NextRequest) {
 
   // Questions
   sortedSelected.forEach((q, i) => {
-    const qLines = wrapText(`Q${i + 1}. ${q.question_text}`, CONTENT_WIDTH, 11)
+    const qLines = wrapText(`Q${i + 1}. ${sanitize(q.question_text)}`, CONTENT_WIDTH, 11)
     ensureSpace(qLines.length * 16 + 80)
 
     for (const line of qLines) {
@@ -418,7 +443,7 @@ export async function POST(request: NextRequest) {
     if (opts.length > 0) {
       // MCQ / Assertion-Reason: show lettered options
       for (const opt of opts) {
-        const lines = wrapText(`${opt.label}) ${opt.text}`, CONTENT_WIDTH - 16, 10)
+        const lines = wrapText(`${opt.label}) ${sanitize(opt.text!)}`, CONTENT_WIDTH - 16, 10)
         ensureSpace(lines.length * 14 + 4)
         for (const line of lines) {
           page.drawText(line, { x: MARGIN + 16, y, size: 10, font, color: rgb(0.2, 0.2, 0.2) })
@@ -460,4 +485,10 @@ export async function POST(request: NextRequest) {
       'Content-Disposition': `attachment; filename="remedy-${student?.name ?? student_id}-${student_id}.pdf"`,
     },
   })
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('remedy-pdf route error:', msg)
+    return NextResponse.json({ error: `PDF generation failed: ${msg}` }, { status: 500 })
+  }
 }

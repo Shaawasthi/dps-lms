@@ -207,8 +207,9 @@ export default function RemedyPage() {
         })
 
         if (!res.ok) {
-          const err = await res.json()
-          setGenError(`Error for ${sid}: ${err.error ?? 'Failed to generate PDF.'}`)
+          let errMsg = 'Failed to generate PDF.'
+          try { errMsg = (await res.json()).error ?? errMsg } catch { /* non-JSON body */ }
+          setGenError(`Error for ${sid}: ${errMsg}`)
           continue
         }
 

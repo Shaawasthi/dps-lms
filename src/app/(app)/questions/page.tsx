@@ -131,7 +131,6 @@ export default function QuestionsPage() {
       .select('question_uid, question_text, level, is_remedy, curriculum_id')
       .eq('is_remedy', qType === 'remedy')
       .order('question_uid')
-      .limit(500)
 
     if (filterClass && curriculumIds.length > 0) q = q.in('curriculum_id', curriculumIds)
     else if (filterClass && curriculum.length > 0) { setQuestions([]); return }
