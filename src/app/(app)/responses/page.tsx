@@ -71,22 +71,26 @@ export default function ResponsesPage() {
             return
           }
 
-          // Build clicker roll_number (DPSN code) → student_id map
-          // Clicker CSV exports the DPSN admission code as roll_number,
-          // which matches student_id in the students table (not roll_number).
-          const rollNumbers = Array.from(new Set(attempted.map((r) => r.roll_number)))
+          // Detect which column holds the student identifier:
+          // - Old format: roll_number = DPSN code (e.g. DPSN2386/19-20)
+          // - New format: class_uid  = numeric join code (e.g. 101, 102…)
+          //               roll_number = sequential roll (1, 2, 3…)
+          const sampleRoll = attempted[0]?.roll_number ?? ''
+          const idCol = /[A-Za-z]/.test(sampleRoll) ? 'roll_number' : 'class_uid'
+
+          const identifiers = Array.from(new Set(attempted.map((r) => r[idCol])))
           const { data: students } = await supabase
             .from('students')
             .select('student_id')
-            .in('student_id', rollNumbers)
+            .in('student_id', identifiers)
 
           const rollMap = new Map<string, string>()
           for (const s of students ?? []) rollMap.set(s.student_id, s.student_id)
 
-          const missing = rollNumbers.filter((rn) => !rollMap.has(rn))
+          const missing = identifiers.filter((id) => !rollMap.has(id))
           if (missing.length) {
             setUploadStatus(
-              `Error: ${missing.length} roll number(s) not found in students table (e.g. ${missing[0]}). Upload students first.`
+              `Error: ${missing.length} student ID(s) not found in students table (e.g. ${missing[0]}). Upload students first.`
             )
             setUploading(false)
             return
@@ -106,8 +110,8 @@ export default function ResponsesPage() {
           }
 
           const records = attempted.map((r) => ({
-            question_uid: r.question_uid,
-            student_id: rollMap.get(r.roll_number)!,
+            question_uid: r.question_uid.trim(),
+            student_id: rollMap.get(r[idCol])!,
             upload_batch_id: batch.id,
             is_correct: r.is_correct === '1' || r.is_correct === 'true',
             time_taken_secs: r.time_taken_secs ? Number(r.time_taken_secs) : null,
