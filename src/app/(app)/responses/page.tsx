@@ -71,14 +71,8 @@ export default function ResponsesPage() {
             return
           }
 
-          // Detect which column holds the student identifier:
-          // - Old format: roll_number = DPSN code (e.g. DPSN2386/19-20)
-          // - New format: class_uid  = numeric join code (e.g. 101, 102…)
-          //               roll_number = sequential roll (1, 2, 3…)
-          const sampleRoll = attempted[0]?.roll_number ?? ''
-          const idCol = /[A-Za-z]/.test(sampleRoll) ? 'roll_number' : 'class_uid'
-
-          const identifiers = Array.from(new Set(attempted.map((r) => r[idCol])))
+          // Match class_uid column from response CSV → student_id in students table
+          const identifiers = Array.from(new Set(attempted.map((r) => r.class_uid)))
           const { data: students } = await supabase
             .from('students')
             .select('student_id')
@@ -111,7 +105,7 @@ export default function ResponsesPage() {
 
           const records = attempted.map((r) => ({
             question_uid: r.question_uid.trim(),
-            student_id: rollMap.get(r[idCol])!,
+            student_id: rollMap.get(r.class_uid)!,
             upload_batch_id: batch.id,
             is_correct: r.is_correct === '1' || r.is_correct === 'true',
             time_taken_secs: r.time_taken_secs ? Number(r.time_taken_secs) : null,
