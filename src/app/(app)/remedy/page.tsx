@@ -29,9 +29,12 @@ export default function RemedyPage() {
   const [students, setStudents] = useState<Student[]>([])
   const [selectedStudent, setSelectedStudent] = useState('')
 
-  // Latest batch + auto-detected covered sessions
+  // Latest batch + session picker
   const [latestBatch, setLatestBatch] = useState<{ id: string; uploaded_at: string } | null>(null)
   const [batchQuestionUids, setBatchQuestionUids] = useState<string[]>([])
+  const [allSessions, setAllSessions] = useState<CurriculumEntry[]>([])
+  const [sessionDates, setSessionDates] = useState<Record<string, string>>({})
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
   const [coveredSessions, setCoveredSessions] = useState<CurriculumEntry[]>([])
   const [loadingSessions, setLoadingSessions] = useState(false)
 
@@ -56,6 +59,9 @@ export default function RemedyPage() {
   useEffect(() => {
     if (!selectedClass) return
     setSelectedStudent('')
+    setAllSessions([])
+    setSessionDates({})
+    setSelectedSessionIds(new Set())
     setCoveredSessions([])
     setBatchQuestionUids([])
     setLatestBatch(null)
@@ -79,11 +85,13 @@ export default function RemedyPage() {
         if (!batches?.length) { setLoadingSessions(false); return }
         setLatestBatch(batches[0]) // most recent, for display only
 
-        // Get all question UIDs across ALL batches for this class
+        // Get all question UIDs + batch IDs across ALL batches for this class
         const batchIds = batches.map((b) => b.id)
+        const batchDateMap = new Map(batches.map((b) => [b.id, b.uploaded_at]))
+
         const { data: batchResps } = await supabase
           .from('responses')
-          .select('question_uid')
+          .select('question_uid, upload_batch_id')
           .in('upload_batch_id', batchIds)
 
         const uids = Array.from(new Set((batchResps ?? []).map((r) => r.question_uid)))
@@ -91,19 +99,36 @@ export default function RemedyPage() {
 
         if (!uids.length) { setLoadingSessions(false); return }
 
-        // Map UIDs → curriculum entries
+        // Map UIDs → curriculum entries (diagnostic questions only)
         const { data: qMeta } = await supabase
           .from('questions')
-          .select('curriculum_id')
+          .select('question_uid, curriculum_id')
           .in('question_uid', uids)
+          .eq('is_remedy', false)
 
-        const curricIds = Array.from(new Set((qMeta ?? []).map((q) => q.curriculum_id)))
+        // Build curriculum_id → latest response date
+        const uidToBatchId = new Map((batchResps ?? []).map((r) => [r.question_uid, r.upload_batch_id]))
+        const dateMap: Record<string, string> = {}
+        for (const q of qMeta ?? []) {
+          if (!q.curriculum_id) continue
+          const date = batchDateMap.get(uidToBatchId.get(q.question_uid) ?? '') ?? ''
+          if (!dateMap[q.curriculum_id] || date > dateMap[q.curriculum_id]) {
+            dateMap[q.curriculum_id] = date
+          }
+        }
+
+        const curricIds = Array.from(new Set((qMeta ?? []).filter((q) => q.curriculum_id).map((q) => q.curriculum_id)))
         const { data: sessions } = await supabase
           .from('curriculum')
           .select('id, unit, learning_goal')
           .in('id', curricIds)
 
-        setCoveredSessions(sessions ?? [])
+        const sessionList = sessions ?? []
+        setAllSessions(sessionList)
+        setSessionDates(dateMap)
+        // Default: all sessions selected
+        setSelectedSessionIds(new Set(sessionList.map((s) => s.id)))
+        setCoveredSessions(sessionList)
         setLoadingSessions(false)
       })
   }, [selectedClass])
@@ -178,6 +203,30 @@ export default function RemedyPage() {
     }
     setDetectedCodes(Array.from(codes))
     setLoadingScores(false)
+  }
+
+  // ── Session picker ─────────────────────────────────────────────────────────
+  function toggleSession(id: string) {
+    const next = new Set(selectedSessionIds)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setSelectedSessionIds(next)
+    setCoveredSessions(allSessions.filter((s) => next.has(s.id)))
+    setSessionScores([])
+    setDetectedCodes([])
+  }
+
+  function selectAllSessions() {
+    setSelectedSessionIds(new Set(allSessions.map((s) => s.id)))
+    setCoveredSessions(allSessions)
+    setSessionScores([])
+    setDetectedCodes([])
+  }
+
+  function clearAllSessions() {
+    setSelectedSessionIds(new Set())
+    setCoveredSessions([])
+    setSessionScores([])
+    setDetectedCodes([])
   }
 
   // ── Generate PDF(s) ────────────────────────────────────────────────────────
@@ -273,38 +322,46 @@ export default function RemedyPage() {
         </div>
       </div>
 
-      {/* Sessions from latest batch */}
+      {/* Session picker */}
       {selectedClass && (
         <div className="bg-white border border-gray-200 rounded-lg p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium">Covered sessions</h2>
-            {latestBatch && (
-              <span className="text-xs text-gray-400">
-                {new Date(latestBatch.uploaded_at).toLocaleDateString('en-IN', {
-                  day: '2-digit', month: 'short', year: 'numeric',
-                })}
-              </span>
+            <h2 className="text-sm font-medium">Sessions to include</h2>
+            {allSessions.length > 0 && (
+              <div className="flex gap-3">
+                <button onClick={selectAllSessions} className="text-xs text-blue-600 hover:underline">All</button>
+                <button onClick={clearAllSessions} className="text-xs text-gray-400 hover:underline">Clear</button>
+              </div>
             )}
           </div>
 
-          {loadingSessions && (
-            <p className="text-sm text-gray-400">Detecting sessions…</p>
-          )}
+          {loadingSessions && <p className="text-sm text-gray-400">Detecting sessions…</p>}
           {!loadingSessions && !latestBatch && (
             <p className="text-sm text-gray-400">No responses uploaded for this class yet.</p>
           )}
-          {!loadingSessions && latestBatch && !coveredSessions.length && (
-            <p className="text-sm text-gray-400">No sessions detected in latest upload.</p>
+          {!loadingSessions && latestBatch && !allSessions.length && (
+            <p className="text-sm text-gray-400">No sessions detected in uploads.</p>
           )}
-          {coveredSessions.length > 0 && (
-            <ul className="space-y-1.5">
-              {coveredSessions.map((s) => (
-                <li key={s.id} className="flex items-start gap-2 text-sm">
-                  <span className="text-green-500 mt-px">✓</span>
-                  <span>
+          {allSessions.length > 0 && (
+            <ul className="space-y-2">
+              {allSessions.map((s) => (
+                <li key={s.id} className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    id={`session-${s.id}`}
+                    checked={selectedSessionIds.has(s.id)}
+                    onChange={() => toggleSession(s.id)}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <label htmlFor={`session-${s.id}`} className="flex-1 text-sm cursor-pointer">
                     <span className="text-gray-400 text-xs">{s.unit} · </span>
                     {s.learning_goal}
-                  </span>
+                  </label>
+                  {sessionDates[s.id] && (
+                    <span className="text-xs text-gray-400 shrink-0 mt-0.5">
+                      {new Date(sessionDates[s.id]).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
