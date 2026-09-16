@@ -75,17 +75,16 @@ export default function RemedyPage() {
       .select('id, uploaded_at')
       .eq('class_uid', selectedClass)
       .order('uploaded_at', { ascending: false })
-      .limit(1)
       .then(async ({ data: batches }) => {
         if (!batches?.length) { setLoadingSessions(false); return }
-        const batch = batches[0]
-        setLatestBatch(batch)
+        setLatestBatch(batches[0]) // most recent, for display only
 
-        // Get all question UIDs from the batch's responses
+        // Get all question UIDs across ALL batches for this class
+        const batchIds = batches.map((b) => b.id)
         const { data: batchResps } = await supabase
           .from('responses')
           .select('question_uid')
-          .eq('upload_batch_id', batch.id)
+          .in('upload_batch_id', batchIds)
 
         const uids = Array.from(new Set((batchResps ?? []).map((r) => r.question_uid)))
         setBatchQuestionUids(uids)
@@ -278,7 +277,7 @@ export default function RemedyPage() {
       {selectedClass && (
         <div className="bg-white border border-gray-200 rounded-lg p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium">Sessions from latest upload</h2>
+            <h2 className="text-sm font-medium">Covered sessions</h2>
             {latestBatch && (
               <span className="text-xs text-gray-400">
                 {new Date(latestBatch.uploaded_at).toLocaleDateString('en-IN', {
