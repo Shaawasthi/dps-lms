@@ -346,24 +346,21 @@ export async function POST(request: NextRequest) {
     .then(({ error }) => { if (error) console.error('remedy_log insert failed:', error.message) })
 
   // ── PDF generation ───────────────────────────────────────────────────────
-  const pdf = await PDFDocument.create()
-  const font = await pdf.embedFont(StandardFonts.Helvetica)
-  const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold)
-
   const PAGE_WIDTH = 595
   const PAGE_HEIGHT = 842
   const MARGIN = 50
   const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2
 
-  const addPage = () => pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
-
-  const wrapText = (text: string, maxWidth: number, size: number): string[] => {
+  // Word-wrap is only about glyph widths, which are identical for a given
+  // StandardFonts face regardless of which PDFDocument embedded it — so one
+  // wrap helper, parametrized by font, serves both documents below.
+  const wrapText = (text: string, maxWidth: number, size: number, withFont: typeof font): string[] => {
     const words = text.split(' ')
     const lines: string[] = []
     let current = ''
     for (const word of words) {
       const test = current ? `${current} ${word}` : word
-      if (font.widthOfTextAtSize(test, size) > maxWidth && current) {
+      if (withFont.widthOfTextAtSize(test, size) > maxWidth && current) {
         lines.push(current)
         current = word
       } else {
@@ -373,6 +370,22 @@ export async function POST(request: NextRequest) {
     if (current) lines.push(current)
     return lines
   }
+
+  const sessionsLine = (curricArr ?? []).map((c) => sanitize(c.learning_goal)).join(' · ')
+  const dateLine = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+
+  // Sort: MCQ and Assertion-Reason first, then Short Answer / Long Answer —
+  // shared between the worksheet and the answer key so numbering matches.
+  const sortedSelected = [
+    ...selected.filter((q) => q.question_type === 'MCQ' || q.question_type === 'Assertion-Reason'),
+    ...selected.filter((q) => q.question_type !== 'MCQ' && q.question_type !== 'Assertion-Reason'),
+  ]
+
+  const pdf = await PDFDocument.create()
+  const font = await pdf.embedFont(StandardFonts.Helvetica)
+  const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold)
+
+  const addPage = () => pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
 
   let page = addPage()
   let y = PAGE_HEIGHT - MARGIN
@@ -390,16 +403,14 @@ export async function POST(request: NextRequest) {
   })
   y -= 26
 
-  const sessionsLine = (curricArr ?? []).map((c) => sanitize(c.learning_goal)).join(' · ')
-
   const headerLines = [
     `Student: ${sanitize(student?.name ?? student_id)}`,
     `Sessions: ${sessionsLine}`,
-    `Date: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`,
+    `Date: ${dateLine}`,
   ]
 
   for (const line of headerLines) {
-    const wrapped = wrapText(line, CONTENT_WIDTH, 10)
+    const wrapped = wrapText(line, CONTENT_WIDTH, 10, font)
     for (const l of wrapped) {
       page.drawText(l, { x: MARGIN, y, size: 10, font, color: rgb(0.2, 0.2, 0.2) })
       y -= 14
@@ -415,15 +426,9 @@ export async function POST(request: NextRequest) {
   })
   y -= 16
 
-  // Sort: MCQ and Assertion-Reason first, then Short Answer / Long Answer
-  const sortedSelected = [
-    ...selected.filter((q) => q.question_type === 'MCQ' || q.question_type === 'Assertion-Reason'),
-    ...selected.filter((q) => q.question_type !== 'MCQ' && q.question_type !== 'Assertion-Reason'),
-  ]
-
   // Questions
   sortedSelected.forEach((q, i) => {
-    const qLines = wrapText(`Q${i + 1}. ${sanitize(q.question_text)}`, CONTENT_WIDTH, 11)
+    const qLines = wrapText(`Q${i + 1}. ${sanitize(q.question_text)}`, CONTENT_WIDTH, 11, font)
     ensureSpace(qLines.length * 16 + 80)
 
     for (const line of qLines) {
@@ -443,7 +448,7 @@ export async function POST(request: NextRequest) {
     if (opts.length > 0) {
       // MCQ / Assertion-Reason: show lettered options
       for (const opt of opts) {
-        const lines = wrapText(`${opt.label}) ${sanitize(opt.text!)}`, CONTENT_WIDTH - 16, 10)
+        const lines = wrapText(`${opt.label}) ${sanitize(opt.text!)}`, CONTENT_WIDTH - 16, 10, font)
         ensureSpace(lines.length * 14 + 4)
         for (const line of lines) {
           page.drawText(line, { x: MARGIN + 16, y, size: 10, font, color: rgb(0.2, 0.2, 0.2) })
@@ -477,13 +482,79 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  const pdfBytes = await pdf.save()
+  const questionsPdfBytes = await pdf.save()
 
-  return new NextResponse(Buffer.from(pdfBytes), {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="remedy-${student?.name ?? student_id}-${student_id}.pdf"`,
-    },
+  // ── Answer key PDF (separate document, same question order/numbering) ────
+  const answerPdf = await PDFDocument.create()
+  const aFont = await answerPdf.embedFont(StandardFonts.Helvetica)
+  const aBoldFont = await answerPdf.embedFont(StandardFonts.HelveticaBold)
+  const addAnswerPage = () => answerPdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
+
+  let aPage = addAnswerPage()
+  let aY = PAGE_HEIGHT - MARGIN
+
+  const ensureAnswerSpace = (needed: number) => {
+    if (aY - needed < MARGIN) {
+      aPage = addAnswerPage()
+      aY = PAGE_HEIGHT - MARGIN
+    }
+  }
+
+  aPage.drawText('Remedy Worksheet - Answer Key', {
+    x: MARGIN, y: aY, size: 18, font: aBoldFont, color: rgb(0.1, 0.3, 0.7),
+  })
+  aY -= 26
+
+  for (const line of headerLines) {
+    const wrapped = wrapText(line, CONTENT_WIDTH, 10, aFont)
+    for (const l of wrapped) {
+      aPage.drawText(l, { x: MARGIN, y: aY, size: 10, font: aFont, color: rgb(0.2, 0.2, 0.2) })
+      aY -= 14
+    }
+  }
+
+  aY -= 6
+  aPage.drawLine({
+    start: { x: MARGIN, y: aY },
+    end: { x: PAGE_WIDTH - MARGIN, y: aY },
+    thickness: 0.5,
+    color: rgb(0.7, 0.7, 0.7),
+  })
+  aY -= 16
+
+  const optionTextForLetter = (q: Question, letter: string): string | null => {
+    if (letter === 'A') return q.option_1
+    if (letter === 'B') return q.option_2
+    if (letter === 'C') return q.option_3
+    if (letter === 'D') return q.option_4
+    return null
+  }
+
+  sortedSelected.forEach((q, i) => {
+    const hasOptions = [q.option_1, q.option_2, q.option_3, q.option_4].some(Boolean)
+    const letter = q.correct_answer?.trim().toUpperCase() ?? ''
+    const answerText = hasOptions
+      ? `${letter}) ${sanitize(optionTextForLetter(q, letter) ?? '')}`
+      : sanitize(q.correct_answer ?? '(no answer on file)')
+
+    const lines = wrapText(`Q${i + 1}. ${answerText}`, CONTENT_WIDTH, 11, aFont)
+    ensureAnswerSpace(lines.length * 16 + 8)
+    lines.forEach((line, li) => {
+      aPage.drawText(line, {
+        x: MARGIN, y: aY, size: 11,
+        font: li === 0 ? aBoldFont : aFont,
+        color: rgb(0, 0, 0),
+      })
+      aY -= 16
+    })
+    aY -= 6
+  })
+
+  const answersPdfBytes = await answerPdf.save()
+
+  return NextResponse.json({
+    questionsPdf: Buffer.from(questionsPdfBytes).toString('base64'),
+    answersPdf: Buffer.from(answersPdfBytes).toString('base64'),
   })
 
   } catch (err) {

@@ -21,6 +21,19 @@ function distributionLabel(miscCount: number) {
   return '10L / 6M / 4H'
 }
 
+function downloadBase64Pdf(base64: string, filename: string) {
+  const byteChars = atob(base64)
+  const bytes = new Uint8Array(byteChars.length)
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i)
+  const blob = new Blob([bytes], { type: 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function RemedyPage() {
   const supabase = createClient()
 
@@ -261,14 +274,14 @@ export default function RemedyPage() {
           continue
         }
 
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
+        const { questionsPdf, answersPdf } = (await res.json()) as {
+          questionsPdf: string
+          answersPdf: string
+        }
         const studentName = students.find((s) => s.student_id === sid)?.name ?? sid
-        a.download = `remedy-${studentName}-${sid}.pdf`
-        a.click()
-        URL.revokeObjectURL(url)
+        downloadBase64Pdf(questionsPdf, `remedy-${studentName}-${sid}.pdf`)
+        await new Promise((resolve) => setTimeout(resolve, 150))
+        downloadBase64Pdf(answersPdf, `remedy-answers-${studentName}-${sid}.pdf`)
 
         if (i < targets.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 300))
