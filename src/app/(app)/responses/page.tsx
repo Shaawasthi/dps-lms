@@ -36,6 +36,21 @@ export default function ResponsesPage() {
     setBatches(data ?? [])
   }
 
+  const CHUNK_SIZE = 200
+
+  // Inserts in fixed-size chunks so one large CSV can't time out in a single
+  // request, and returns how many rows actually made it in.
+  async function insertResponsesInChunks(records: Record<string, unknown>[]) {
+    let inserted = 0
+    for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+      const chunk = records.slice(i, i + CHUNK_SIZE)
+      const { error } = await supabase.from('responses').insert(chunk)
+      if (error) throw new Error(error.message)
+      inserted += chunk.length
+    }
+    return inserted
+  }
+
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault()
     setUploadStatus('')
@@ -50,115 +65,118 @@ export default function ResponsesPage() {
       header: true,
       skipEmptyLines: true,
       complete: async (result) => {
-        const allRows = result.data as Array<Record<string, string>>
-        if (!allRows.length) {
-          setUploadStatus('CSV is empty.')
+        let batch: Batch | null = null
+        try {
+          const allRows = result.data as Array<Record<string, string>>
+          if (!allRows.length) {
+            setUploadStatus('CSV is empty.')
+            return
+          }
+
+          // Detect clicker-app format by presence of 'roll_number' column
+          const isClickerFormat = 'roll_number' in allRows[0]
+
+          // ── Clicker-app format ──────────────────────────────────────────
+          if (isClickerFormat) {
+            // Only keep rows where student actually attempted (has_attemped = 1)
+            const attempted = allRows.filter((r) => r.has_attemped === '1')
+
+            if (!attempted.length) {
+              setUploadStatus('No attempted responses found in file.')
+              return
+            }
+
+            // Match class_uid column from response CSV → student_id in students table
+            const identifiers = Array.from(new Set(attempted.map((r) => r.class_uid)))
+            const { data: students, error: studentsError } = await supabase
+              .from('students')
+              .select('student_id')
+              .in('student_id', identifiers)
+
+            if (studentsError) throw new Error('Failed to look up students: ' + studentsError.message)
+
+            const rollMap = new Map<string, string>()
+            for (const s of students ?? []) rollMap.set(s.student_id, s.student_id)
+
+            const missing = identifiers.filter((id) => !rollMap.has(id))
+            if (missing.length) {
+              setUploadStatus(
+                `Error: ${missing.length} student ID(s) not found in students table (e.g. ${missing[0]}). Upload students first.`
+              )
+              return
+            }
+
+            // Create batch
+            const { data: createdBatch, error: batchError } = await supabase
+              .from('upload_batches')
+              .insert({ class_uid: uploadClassUid, filename: file.name, row_count: attempted.length })
+              .select()
+              .single()
+
+            if (batchError || !createdBatch) throw new Error('Error creating batch: ' + batchError?.message)
+            batch = createdBatch
+            const batchId = createdBatch.id
+
+            const records = attempted.map((r) => ({
+              question_uid: r.question_uid.trim(),
+              student_id: rollMap.get(r.class_uid)!,
+              upload_batch_id: batchId,
+              is_correct: r.is_correct === '1' || r.is_correct === 'true',
+              time_taken_secs: r.time_taken_secs ? Number(r.time_taken_secs) : null,
+              response_option: r.option_chosen || null,
+            }))
+
+            const inserted = await insertResponsesInChunks(records)
+            await supabase.from('upload_batches').update({ row_count: inserted }).eq('id', batchId)
+
+            setUploadStatus(`Uploaded ${inserted} responses (${allRows.length - attempted.length} skipped — not attempted).`)
+            if (fileRef.current) fileRef.current.value = ''
+            setUploadClassUid('')
+            fetchBatches()
+
+          // ── Standard format ─────────────────────────────────────────────
+          } else {
+            const { data: createdBatch, error: batchError } = await supabase
+              .from('upload_batches')
+              .insert({ class_uid: uploadClassUid, filename: file.name, row_count: allRows.length })
+              .select()
+              .single()
+
+            if (batchError || !createdBatch) throw new Error('Error creating batch: ' + batchError?.message)
+            batch = createdBatch
+            const batchId = createdBatch.id
+
+            const records = allRows.map((r) => ({
+              question_uid: r.question_uid,
+              student_id: r.student_id,
+              upload_batch_id: batchId,
+              is_correct: r.is_correct === 'true' || r.is_correct === '1',
+              time_taken_secs: r.time_taken_secs ? Number(r.time_taken_secs) : null,
+              response_option: r.response_option || null,
+            }))
+
+            const inserted = await insertResponsesInChunks(records)
+            await supabase.from('upload_batches').update({ row_count: inserted }).eq('id', batchId)
+
+            setUploadStatus(`Uploaded ${inserted} responses (batch: ${batchId.slice(0, 8)}…)`)
+            if (fileRef.current) fileRef.current.value = ''
+            setUploadClassUid('')
+            fetchBatches()
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          setUploadStatus('Error uploading responses: ' + message)
+          // Clean up any rows that made it in before the failure, and keep
+          // the batch visible in history marked as failed rather than
+          // silently vanishing or lingering with a false "ok" status.
+          if (batch) {
+            await supabase.from('responses').delete().eq('upload_batch_id', batch.id)
+            await supabase.from('upload_batches').update({ status: 'error' }).eq('id', batch.id)
+          }
+          fetchBatches()
+        } finally {
           setUploading(false)
-          return
         }
-
-        // Detect clicker-app format by presence of 'roll_number' column
-        const isClickerFormat = 'roll_number' in allRows[0]
-
-        // ── Clicker-app format ────────────────────────────────────────────────
-        if (isClickerFormat) {
-          // Only keep rows where student actually attempted (has_attemped = 1)
-          const attempted = allRows.filter((r) => r.has_attemped === '1')
-
-          if (!attempted.length) {
-            setUploadStatus('No attempted responses found in file.')
-            setUploading(false)
-            return
-          }
-
-          // Match class_uid column from response CSV → student_id in students table
-          const identifiers = Array.from(new Set(attempted.map((r) => r.class_uid)))
-          const { data: students } = await supabase
-            .from('students')
-            .select('student_id')
-            .in('student_id', identifiers)
-
-          const rollMap = new Map<string, string>()
-          for (const s of students ?? []) rollMap.set(s.student_id, s.student_id)
-
-          const missing = identifiers.filter((id) => !rollMap.has(id))
-          if (missing.length) {
-            setUploadStatus(
-              `Error: ${missing.length} student ID(s) not found in students table (e.g. ${missing[0]}). Upload students first.`
-            )
-            setUploading(false)
-            return
-          }
-
-          // Create batch
-          const { data: batch, error: batchError } = await supabase
-            .from('upload_batches')
-            .insert({ class_uid: uploadClassUid, filename: file.name, row_count: attempted.length })
-            .select()
-            .single()
-
-          if (batchError || !batch) {
-            setUploadStatus('Error creating batch: ' + batchError?.message)
-            setUploading(false)
-            return
-          }
-
-          const records = attempted.map((r) => ({
-            question_uid: r.question_uid.trim(),
-            student_id: rollMap.get(r.class_uid)!,
-            upload_batch_id: batch.id,
-            is_correct: r.is_correct === '1' || r.is_correct === 'true',
-            time_taken_secs: r.time_taken_secs ? Number(r.time_taken_secs) : null,
-            response_option: r.option_chosen || null,
-          }))
-
-          const { error } = await supabase.from('responses').insert(records)
-          if (error) {
-            setUploadStatus('Error uploading responses: ' + error.message)
-            await supabase.from('upload_batches').delete().eq('id', batch.id)
-          } else {
-            setUploadStatus(`Uploaded ${records.length} responses (${allRows.length - attempted.length} skipped — not attempted).`)
-            if (fileRef.current) fileRef.current.value = ''
-            setUploadClassUid('')
-            fetchBatches()
-          }
-
-        // ── Standard format ───────────────────────────────────────────────────
-        } else {
-          const { data: batch, error: batchError } = await supabase
-            .from('upload_batches')
-            .insert({ class_uid: uploadClassUid, filename: file.name, row_count: allRows.length })
-            .select()
-            .single()
-
-          if (batchError || !batch) {
-            setUploadStatus('Error creating batch: ' + batchError?.message)
-            setUploading(false)
-            return
-          }
-
-          const records = allRows.map((r) => ({
-            question_uid: r.question_uid,
-            student_id: r.student_id,
-            upload_batch_id: batch.id,
-            is_correct: r.is_correct === 'true' || r.is_correct === '1',
-            time_taken_secs: r.time_taken_secs ? Number(r.time_taken_secs) : null,
-            response_option: r.response_option || null,
-          }))
-
-          const { error } = await supabase.from('responses').insert(records)
-          if (error) {
-            setUploadStatus('Error uploading responses: ' + error.message)
-            await supabase.from('upload_batches').delete().eq('id', batch.id)
-          } else {
-            setUploadStatus(`Uploaded ${records.length} responses (batch: ${batch.id.slice(0, 8)}…)`)
-            if (fileRef.current) fileRef.current.value = ''
-            setUploadClassUid('')
-            fetchBatches()
-          }
-        }
-
-        setUploading(false)
       },
     })
   }
