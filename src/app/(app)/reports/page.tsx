@@ -65,7 +65,7 @@ export default function ReportsPage() {
             .from('curriculum')
             .select('id, unit, learning_goal')
             .eq('grade', classInfo.grade)
-            .eq('subject', classInfo.subject)
+            .ilike('subject', classInfo.subject)
         : Promise.resolve({ data: [] }),
     ])
 

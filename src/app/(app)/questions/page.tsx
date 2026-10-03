@@ -103,7 +103,7 @@ export default function QuestionsPage() {
       .then(({ data: ci }) => {
         if (!ci) return setCurriculum([])
         supabase.from('curriculum').select('id, unit, learning_goal')
-          .eq('grade', ci.grade).eq('subject', ci.subject)
+          .eq('grade', ci.grade).ilike('subject', ci.subject)
           .then(({ data }) => setCurriculum(data ?? []))
       })
     setSelectedCurriculumIds([])
