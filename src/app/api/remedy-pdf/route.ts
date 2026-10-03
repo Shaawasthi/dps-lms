@@ -429,12 +429,15 @@ export async function POST(request: NextRequest) {
   // Questions
   sortedSelected.forEach((q, i) => {
     const qLines = wrapText(`Q${i + 1}. ${sanitize(q.question_text)}`, CONTENT_WIDTH, 11, font)
-    ensureSpace(qLines.length * 16 + 80)
+    ensureSpace(qLines.length * 16 + 90)
 
     for (const line of qLines) {
       page.drawText(line, { x: MARGIN, y, size: 11, font: boldFont, color: rgb(0, 0, 0) })
       y -= 15
     }
+
+    page.drawText(sanitize(q.question_uid), { x: MARGIN, y, size: 7.5, font, color: rgb(0.65, 0.65, 0.65) })
+    y -= 13
 
     y -= 4
 
@@ -538,7 +541,7 @@ export async function POST(request: NextRequest) {
       : sanitize(q.correct_answer ?? '(no answer on file)')
 
     const lines = wrapText(`Q${i + 1}. ${answerText}`, CONTENT_WIDTH, 11, aFont)
-    ensureAnswerSpace(lines.length * 16 + 8)
+    ensureAnswerSpace(lines.length * 16 + 20)
     lines.forEach((line, li) => {
       aPage.drawText(line, {
         x: MARGIN, y: aY, size: 11,
@@ -547,7 +550,8 @@ export async function POST(request: NextRequest) {
       })
       aY -= 16
     })
-    aY -= 6
+    aPage.drawText(sanitize(q.question_uid), { x: MARGIN, y: aY, size: 7.5, font: aFont, color: rgb(0.65, 0.65, 0.65) })
+    aY -= 18
   })
 
   const answersPdfBytes = await answerPdf.save()
