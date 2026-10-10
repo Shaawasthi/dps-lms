@@ -20,6 +20,24 @@ type QuestionMeta = {
 type ScoreKey = `${string}||${string}||${string}` // student_id||curriculum_id||level
 
 const LEVELS = ['Theory', 'Understanding', 'Application'] as const
+const PAGE_SIZE = 1000
+
+// Supabase caps an unpaginated select() at 1000 rows by default. A class
+// with enough response history silently loses rows past that cap.
+async function fetchAllRows<T>(
+  makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const all: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await makeQuery(from, from + PAGE_SIZE - 1)
+    if (error || !data) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return all
+}
 
 export default function ReportsPage() {
   const supabase = createClient()
@@ -94,18 +112,21 @@ export default function ReportsPage() {
       return
     }
 
-    const { data: resps } = await supabase
-      .from('responses')
-      .select('question_uid, student_id, is_correct')
-      .in('student_id', studentIds)
-      .in('question_uid', questionUids)
+    const resps = await fetchAllRows<Response>((from, to) =>
+      supabase
+        .from('responses')
+        .select('question_uid, student_id, is_correct')
+        .in('student_id', studentIds)
+        .in('question_uid', questionUids)
+        .range(from, to)
+    )
 
     const qMap = new Map<string, QuestionMeta>(
       (qMeta ?? []).map((q) => [q.question_uid, q])
     )
 
     const scoreMap = new Map<ScoreKey, { correct: number; total: number }>()
-    for (const r of resps ?? []) {
+    for (const r of resps) {
       const q = qMap.get(r.question_uid)
       if (!q || !q.level) continue
       const key: ScoreKey = `${r.student_id}||${q.curriculum_id}||${q.level}`

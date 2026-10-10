@@ -11,6 +11,26 @@ type SessionScore = { session: CurriculumEntry; levels: LevelScore[] }
 
 const ALL_STUDENTS = '__all__'
 const LEVELS = ['Theory', 'Understanding', 'Application'] as const
+const PAGE_SIZE = 1000
+
+// Supabase caps an unpaginated select() at 1000 rows by default. A class
+// with enough upload history silently loses rows past that cap, which
+// previously hid whole sessions from "Sessions to include". Page through
+// with .range() until a page comes back short.
+async function fetchAllRows<T>(
+  makeQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const all: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await makeQuery(from, from + PAGE_SIZE - 1)
+    if (error || !data) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return all
+}
 
 // L = Lower (Understand)  M = Middle (Apply/Analyze)  H = Higher (Evaluate/Create)
 // Difficulty split within each group: 40% Easy · 30% Medium · 30% Hard
@@ -102,12 +122,16 @@ export default function RemedyPage() {
         const batchIds = batches.map((b) => b.id)
         const batchDateMap = new Map(batches.map((b) => [b.id, b.uploaded_at]))
 
-        const { data: batchResps } = await supabase
-          .from('responses')
-          .select('question_uid, upload_batch_id')
-          .in('upload_batch_id', batchIds)
+        const batchResps = await fetchAllRows<{ question_uid: string; upload_batch_id: string }>(
+          (from, to) =>
+            supabase
+              .from('responses')
+              .select('question_uid, upload_batch_id')
+              .in('upload_batch_id', batchIds)
+              .range(from, to)
+        )
 
-        const uids = Array.from(new Set((batchResps ?? []).map((r) => r.question_uid)))
+        const uids = Array.from(new Set(batchResps.map((r) => r.question_uid)))
         setBatchQuestionUids(uids)
 
         if (!uids.length) { setLoadingSessions(false); return }
@@ -120,7 +144,7 @@ export default function RemedyPage() {
           .eq('is_remedy', false)
 
         // Build curriculum_id → latest response date
-        const uidToBatchId = new Map((batchResps ?? []).map((r) => [r.question_uid, r.upload_batch_id]))
+        const uidToBatchId = new Map(batchResps.map((r) => [r.question_uid, r.upload_batch_id]))
         const dateMap: Record<string, string> = {}
         for (const q of qMeta ?? []) {
           if (!q.curriculum_id) continue
