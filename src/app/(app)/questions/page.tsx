@@ -252,6 +252,44 @@ export default function QuestionsPage() {
           setUploadStatus(`Error: ${missing.length} row(s) have no matching session.\n${details.join('\n')}${more}`)
           return
         }
+
+        // Catch CHECK-constraint mismatches client-side so the error names the
+        // actual bad values instead of a generic Postgres constraint message.
+        const checkField = (
+          field: 'level' | 'difficulty' | 'question_type',
+          value: string | null,
+          allowed: string[]
+        ) => {
+          if (value === null) return null
+          return allowed.includes(value) ? null : value
+        }
+
+        const fieldProblems: string[] = []
+        for (const r of records) {
+          const allowedLevels = r.is_remedy ? BLOOM_LEVELS : DIAG_LEVELS
+          const badLevel = checkField('level', r.level, allowedLevels)
+          if (badLevel) fieldProblems.push(`${r.question_uid}: level "${badLevel}" (expected one of: ${allowedLevels.join(', ')})`)
+
+          if (r.is_remedy) {
+            const badDifficulty = checkField('difficulty', r.difficulty, DIFFICULTIES)
+            if (badDifficulty) fieldProblems.push(`${r.question_uid}: difficulty "${badDifficulty}" (expected one of: ${DIFFICULTIES.join(', ')})`)
+
+            const badType = checkField('question_type', r.question_type, QUESTION_TYPES)
+            if (badType) fieldProblems.push(`${r.question_uid}: question_type "${badType}" (expected one of: ${QUESTION_TYPES.join(', ')})`)
+          }
+        }
+
+        if (fieldProblems.length) {
+          const uniqueBadValues = Array.from(
+            new Set(fieldProblems.map((p) => p.match(/"([^"]+)"/)?.[1]).filter(Boolean))
+          )
+          const summary = `Invalid value(s) found: ${uniqueBadValues.join(', ')}`
+          const details = fieldProblems.slice(0, 8).join('\n')
+          const more = fieldProblems.length > 8 ? `\n… and ${fieldProblems.length - 8} more` : ''
+          setUploadStatus(`Error: ${summary}\n${details}${more}`)
+          return
+        }
+
         const { error } = await supabase.from('questions').upsert(records, { onConflict: 'question_uid' })
         if (error) { setUploadStatus('Error: ' + error.message); return }
         setUploadStatus(`Uploaded ${records.length} questions.`)
